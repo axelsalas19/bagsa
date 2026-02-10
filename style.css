@@ -1,0 +1,261 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#sidebar {
+    width: 300px;
+    background: #f5f5f5;
+    padding: 15px;
+    overflow-y: auto;
+    border-right: 2px solid #ddd;
+}
+
+#map {
+    flex: 1;
+    height: 100vh;
+}
+
+h2 {
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+h3 {
+    font-size: 14px;
+    margin: 15px 0 8px 0;
+    color: #555;
+}
+
+.layer-item {
+    margin: 8px 0;
+    padding: 8px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.layer-item label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.layer-item input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover {
+    background: #0056b3;
+}
+
+button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+#status {
+    padding: 8px;
+    margin: 10px 0;
+    border-radius: 4px;
+    font-size: 12px;
+    display: none;
+}
+
+#status.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+#status.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+#status.loading {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.leaflet-popup-content {
+    font-size: 12px;
+}
+
+.leaflet-popup-content strong {
+    color: #007bff;
+}
+
+#elementList {
+    max-height: 200px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px;
+    margin-top: 10px;
+}
+
+.element-item {
+    padding: 5px;
+    margin: 3px 0;
+    background: #f9f9f9;
+    border-left: 3px solid #007bff;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.element-item:hover {
+    background: #e9ecef;
+}
+
+.filter-section {
+    margin: 15px 0;
+    padding: 10px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+select {
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.filter-btn {
+    background: #28a745;
+    margin: 5px 0;
+}
+
+.filter-btn:hover {
+    background: #218838;
+}
+
+.filter-btn.clear {
+    background: #6c757d;
+}
+
+.filter-btn.clear:hover {
+    background: #5a6268;
+}
+
+.debug-info {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+.active-filter {
+    background-color: #e8f4fd;
+    border-color: #007bff;
+}
+/* Leyenda para diámetros */
+#legend {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-width: 250px;
+    font-size: 12px;
+    display: none; /* Oculto por defecto */
+}
+
+#legend h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 5px 0;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border: 1px solid #666;
+}
+
+.legend-label {
+    flex: 1;
+}
+
+/* Estilos para diámetros específicos */
+.diameter-50 {
+    background-color: #f3a120 !important;
+}
+
+.diameter-63 {
+    background-color: #0e2eea !important; 
+}
+
+.diameter-90 {
+    background-color: #df0c0c !important; 
+}
+
+.diameter-125 {
+    background-color: #15960b !important; 
+}
+
+.diameter-180 {
+    background-color: #da21cb !important; 
+}
+
+.diameter-other {
+    background-color: white !important;
+}
+
+/* Botón para mostrar/ocultar leyenda */
+#toggleLegendBtn {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 1000;
+    padding: 4px 6px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    width: auto !important;
+}
+
+#toggleLegendBtn:hover {
+    background: #0056b3;
+}
