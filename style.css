@@ -259,3 +259,92 @@ select {
 #toggleLegendBtn:hover {
     background: #0056b3;
 }
+/* ============================== */
+/* BOTÓN TOGGLE PARA MÓVIL */
+/* ============================== */
+
+/* Botón de toggle (oculto en desktop) */
+#mobileToggleBtn {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1001;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+#mobileToggleBtn:hover {
+    background: #0056b3;
+}
+
+/* Overlay para fondo oscuro */
+#sidebarOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+}
+
+/* RESPONSIVE PARA MÓVILES */
+@media (max-width: 768px) {
+    /* Mostrar botón en móvil */
+    #mobileToggleBtn {
+        display: block;
+    }
+    
+    /* Sidebar oculto inicialmente */
+    #sidebar {
+        position: fixed;
+        left: -100%;
+        top: 0;
+        height: 100vh;
+        max-height: 100vh;
+        width: 85%;
+        z-index: 1000;
+        transition: left 0.3s ease;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+        border-right: none;
+    }
+    
+    /* Sidebar visible */
+    #sidebar.active {
+        left: 0;
+    }
+    
+    /* Mostrar overlay cuando sidebar está activo */
+    #sidebar.active ~ #sidebarOverlay {
+        display: block;
+    }
+    
+    /* Ajustar layout para móvil */
+    body {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    /* Mapa ocupa toda la pantalla cuando sidebar está cerrado */
+    #map {
+        width: 100%;
+        height: 100vh;
+        flex: none;
+        transition: none;
+    }
+}
+
+/* Pantallas muy pequeñas */
+@media (max-width: 480px) {
+    #sidebar {
+        width: 90%;
+    }
+}

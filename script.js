@@ -147,6 +147,41 @@ function initLayerGroups() {
 }
 
 function initEventListeners() {
+    
+    // Crear botón toggle para móvil
+    const mobileToggleBtn = document.getElementById('mobileToggleBtn');
+    const sidebar = document.getElementById('sidebar');
+    
+    // Crear overlay dinámicamente
+    const sidebarOverlay = document.createElement('div');
+    sidebarOverlay.id = 'sidebarOverlay';
+    document.body.appendChild(sidebarOverlay);
+    
+    // Event listener para el botón móvil
+    mobileToggleBtn.addEventListener('click', function() {
+        sidebar.classList.toggle('active');
+        this.textContent = sidebar.classList.contains('active') ? '✕' : '☰';
+    });
+    
+    // Cerrar sidebar al hacer clic en el overlay
+    sidebarOverlay.addEventListener('click', function() {
+        sidebar.classList.remove('active');
+        mobileToggleBtn.textContent = '☰';
+    });
+    
+    // Cerrar sidebar al hacer clic en un enlace dentro del sidebar
+    sidebar.addEventListener('click', function(e) {
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') {
+            // Cerrar sidebar después de un breve retraso en móvil
+            if (window.innerWidth <= 768) {
+                setTimeout(() => {
+                    sidebar.classList.remove('active');
+                    mobileToggleBtn.textContent = '☰';
+                }, 300);
+            }
+        }
+    });
+    // ===== FIN DEL CÓDIGO NUEVO =====
     // Inicializar event listeners para checkboxes
     document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
