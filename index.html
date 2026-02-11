@@ -34,11 +34,22 @@
             <button class="filter-btn clear" id="clearMunicipioFilter" disabled>Limpiar</button>
         </div>
         
+        <!-- Filtro por Unidad Regional -->
+        <div class="filter-section">
+            <h3>Filtrar por Unidad Regional</h3>
+            <select id="selectUnidadRegional" disabled>
+                <option value="">-- Seleccione unidad regional --</option>
+            </select>
+            <div class="debug-info" id="unidadRegionalDebug"></div>
+            <button class="filter-btn" id="applyUnidadRegionalFilter" disabled>Aplicar</button>
+            <button class="filter-btn clear" id="clearUnidadRegionalFilter" disabled>Limpiar</button>
+        </div>
+
         <!-- Filtro por Localidad -->
         <div class="filter-section">
-            <h3>Filtrar por Localidad</h3>
+            <h3>Filtrar por Area de Servicio</h3>
             <select id="selectLocalidad" disabled>
-                <option value="">-- Seleccione una localidad --</option>
+                <option value="">-- Seleccione un Área de Servicio --</option>
             </select>
             <!--<div class="debug-info" id="localidadDebug"></div>-->
             <button class="filter-btn" id="applyLocalidadFilter" disabled>Aplicar</button>

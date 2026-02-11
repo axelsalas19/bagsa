@@ -1,6 +1,3 @@
-
-// Incluye: Filtros por municipio y localidad con PostGIS + Clasificación por diámetro
-
 // Variables globales
 let supabaseClient;
 let municipiosData = [];
@@ -67,8 +64,8 @@ function initMap() {
         maxZoom: 19
     });
     
-    const argenmapLayer = L.tileLayer('https://wms.ign.gob.ar/geoserver/gwc/service/tms/1.0.0/cartografia_base@EPSG%3A3857@png/{z}/{x}/{-y}.png', {
-        attribution: '&copy; <a href="https://www.ign.gob.ar/">IGN Argentina</a>',
+    const argenmapLayer = L.tileLayer('https://wms.ign.gob.ar/geoserver/gwc/service/tms/1.0.0/mapabase_gris@EPSG%3A3857@png/{z}/{x}/{-y}.png', {
+        attribution: '<a href="http://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> | <a href="http://www.ign.gob.ar/AreaServicios/Argenmap/IntroduccionV2" target="_blank">Instituto Geográfico Nacional</a> + <a href="http://www.osm.org/copyright" target="_blank">OpenStreetMap</a>',
         maxZoom: 19,
         tms: true
     });
@@ -87,7 +84,7 @@ function initMap() {
         "OpenStreetMap": osmLayer,
         "Satélite": satelliteLayer,
         "Google Híbrido": googleHybridLayer,
-        "ArgenMap": argenmapLayer
+        "ArgenMap Gris": argenmapLayer
     };
     
     L.control.layers(baseMaps).addTo(map);
@@ -123,10 +120,10 @@ function initStyles() {
     
     filteredStyle = {
         municipios: {
-            color: '#ff5500',
-            weight: 2,
+            color: '#232323',
+            weight: 1,
             fillOpacity: 0.1,
-            fillColor: '#f59745'
+            fillColor: '#ffffff'
         },
         localidades: {
             color: '#2466e9',
@@ -190,9 +187,11 @@ function initEventListeners() {
     // Event listeners para filtros
     document.getElementById('applyMunicipioFilter').addEventListener('click', applyMunicipioFilter);
     document.getElementById('applyLocalidadFilter').addEventListener('click', applyLocalidadFilter);
+    document.getElementById('applyUnidadRegionalFilter').addEventListener('click',applyUnidadRegionalFilter );
     document.getElementById('clearMunicipioFilter').addEventListener('click', clearFilter);
     document.getElementById('clearLocalidadFilter').addEventListener('click', clearFilter);
-    
+    document.getElementById('clearUnidadRegionalFilter').addEventListener('click', clearFilter);
+
     // Botón para verificar tablas
     /*document.getElementById('checkTablesBtn').addEventListener('click', async function() {
         this.disabled = true;
@@ -683,6 +682,9 @@ async function loadBaseData() {
             console.log('Filtro localidad habilitado');
         }
         
+            populateUnidadRegionalSelect();
+            console.log('Filtro unidad regional habilitado');
+
         // NO cargar calles y red de gas inicialmente - se cargarán con PostGIS
         console.log('Calles y red de gas se cargarán dinámicamente con PostGIS');
         
@@ -729,12 +731,36 @@ function populateMunicipioSelect() {
     }
 }
 
+function populateUnidadRegionalSelect(){
+    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
+    if (selectUnidadRegional)
+    selectUnidadRegional.innerHTML = '<option value="">-- Seleccione unidad regional --</option>';
+    
+    // Extraer valores únicos del campo unidad_regional
+    const unidadesRegionales = [...new Set(
+        localidadesData
+            .map(l => l.unidad_regional)
+            .filter(ur => ur) // Filtrar valores vacíos o null
+    )].sort();
+    
+    unidadesRegionales.forEach(unidad => {
+        const option = document.createElement('option');
+        option.value = unidad;
+        option.textContent = unidad;
+        selectUnidadRegional.appendChild(option);
+    });
+    
+    selectUnidadRegional.disabled = false;
+    document.getElementById('applyUnidadRegionalFilter').disabled = false;
+    document.getElementById('clearUnidadRegionalFilter').disabled = false;
+}
+
 // Poblar select de localidades
 function populateLocalidadSelect() {
     const select = document.getElementById('selectLocalidad');
     if (!select) return;
     
-    select.innerHTML = '<option value="">-- Seleccione una localidad --</option>';
+    select.innerHTML = '<option value="">-- Seleccione un Área de Servicio --</option>';
     
     // Usar 'nombre' que es el campo real en localidades
     localidadesData.sort((a, b) => {
@@ -1081,6 +1107,87 @@ const municipioPadre = municipiosData.find(municipio => {
     console.log('Filtro localidad aplicado completamente con PostGIS');
 }
 
+async function applyUnidadRegionalFilter() {
+    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
+    const unidadRegional = selectUnidadRegional.value;
+    
+    if (!unidadRegional) {
+        showStatus('Seleccione una unidad regional', 'error');
+        return;
+    }
+    
+    console.log('Aplicando filtro por unidad regional:', unidadRegional);
+    showStatus(`Filtrando por unidad regional: ${unidadRegional}...`, 'loading');
+    
+    // Resaltar sección activa
+    document.querySelectorAll('.filter-section').forEach(section => {
+        section.classList.remove('active-filter');
+    });
+    selectUnidadRegional.closest('.filter-section').classList.add('active-filter');
+    
+    // Guardar filtro actual
+    currentFilter = {
+        type: 'unidad_regional',
+        name: unidadRegional
+    };
+    
+    // 1. Filtrar localidades por unidad regional
+    const localidadesFiltradas = localidadesData.filter(l => l.unidad_regional === unidadRegional);
+    
+    if (localidadesFiltradas.length === 0) {
+        showStatus(`No se encontraron localidades para ${unidadRegional}`, 'error');
+        return;
+    }
+    
+    console.log(`Localidades encontradas: ${localidadesFiltradas.length}`);
+    
+    // 2. Limpiar y renderizar localidades filtradas
+    layerGroups.localidades.clearLayers();
+    renderDataToLayer('localidades', localidadesFiltradas, filteredStyle.localidades);
+    
+    if (!map.hasLayer(layerGroups.localidades)) {
+        layerGroups.localidades.addTo(map);
+    }
+    
+    // Marcar checkbox de localidades
+    const localidadesCheckbox = document.getElementById('layer-localidades');
+    if (localidadesCheckbox) {
+        localidadesCheckbox.checked = true;
+    }
+    
+    // 3. Obtener municipios únicos de las localidades filtradas
+    const municipiosUnicos = [...new Set(localidadesFiltradas.map(l => l.municipio))];
+    const municipiosFiltrados = municipiosData.filter(m => municipiosUnicos.includes(m.municipio));
+    
+    // 4. Renderizar municipios filtrados
+    layerGroups.municipios.clearLayers();
+    if (municipiosFiltrados.length > 0) {
+        renderDataToLayer('municipios', municipiosFiltrados, filteredStyle.municipios);
+        
+       // APAGAR: remover del mapa (pero queda cargado en layerGroup)
+    if (map.hasLayer(layerGroups.municipios)) {
+        map.removeLayer(layerGroups.municipios);
+    }
+
+    // Desmarcar checkbox
+    const municipiosCheckbox = document.getElementById('layer-municipios');
+        if (municipiosCheckbox) {
+        municipiosCheckbox.checked = false;
+    }
+    }
+    
+    // 5. Ajustar vista a las localidades filtradas
+    setTimeout(() => {
+        fitViewToLayerGroup('localidades');
+    }, 500);
+    
+    // 6. Habilitar capas de calles y red de gas
+    enableFilteredLayers(unidadRegional);
+    
+    showStatus(`${localidadesFiltradas.length} localidades en ${unidadRegional}`, 'success');
+    console.log('Filtro por unidad regional aplicado');
+}
+
 // ===============================
 // LIMPIAR FILTRO
 // ===============================
@@ -1094,9 +1201,11 @@ function clearFilter() {
     // Limpiar selects
     const selectMunicipio = document.getElementById('selectMunicipio');
     const selectLocalidad = document.getElementById('selectLocalidad');
+    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
     
     if (selectMunicipio) selectMunicipio.value = '';
     if (selectLocalidad) selectLocalidad.value = '';
+    if (selectUnidadRegional) selectUnidadRegional.value = '';
     
     // Remover resaltado
     document.querySelectorAll('.filter-section').forEach(section => {
