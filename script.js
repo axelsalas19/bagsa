@@ -181,7 +181,7 @@ function initEventListeners() {
             }
         }
     });
-    // ===== FIN DEL CÓDIGO NUEVO =====
+    
     // Inicializar event listeners para checkboxes
     document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
@@ -194,7 +194,7 @@ function initEventListeners() {
     document.getElementById('clearLocalidadFilter').addEventListener('click', clearFilter);
     
     // Botón para verificar tablas
-    document.getElementById('checkTablesBtn').addEventListener('click', async function() {
+    /*document.getElementById('checkTablesBtn').addEventListener('click', async function() {
         this.disabled = true;
         showStatus('Verificando tablas disponibles...', 'loading');
         
@@ -217,7 +217,7 @@ function initEventListeners() {
         
         showStatus('Disponibles: ' + availableTables.join(', '), 'success');
         this.disabled = false;
-    });
+    });*/
     
     // Botón para cargar datos base
     document.getElementById('loadDataBtn').addEventListener('click', async function() {
@@ -307,6 +307,8 @@ function createLocalidadPopup(properties) {
     if (properties.num_fimm) content += `<strong>Núm. Localidad:</strong> ${properties.num_fimm}<br>`;
     if (properties.turno) content += `<strong>Turno:</strong> ${properties.turno}<br>`;
     if (properties.producto) content +=  `<strong>Tipo Producto: </strong> ${properties.producto}<br>`;
+    if (properties.cant_conect) content +=  `<strong>Capacidad máxima: </strong> ${properties.cant_conect}<br>`;
+    if (properties.cant_tanques) content +=  `<strong>Cantidad tanques: </strong> ${properties.cant_tanques}<br>`;
     return content;
 }
 
@@ -842,7 +844,7 @@ async function applyMunicipioFilter() {
         return;
     }
     
-    // Buscar municipio - usar 'nam' que es el campo real
+    // Buscar municipio
     const municipio = municipiosData.find(m => m.nam === municipioNombre);
     
     if (!municipio) {
@@ -878,6 +880,10 @@ async function applyMunicipioFilter() {
     layerGroups.municipios.clearLayers();
     renderDataToLayer('municipios', [municipio], filteredStyle.municipios);
     
+    // ==== AGREGAR ESTAS 2 LÍNEAS DESPUÉS ====
+    if (!map.hasLayer(layerGroups.municipios)) {
+    layerGroups.municipios.addTo(map);
+    }
     // 4. Filtrar localidades del municipio (en cliente por ahora)
     const localidadesEnMunicipio = localidadesData.filter(localidad => {
         return localidad.partido === municipioNombre || 
@@ -930,7 +936,7 @@ async function applyMunicipioFilter() {
         fitViewToLayerGroup('municipios');
     }, 500);
     
-    updateElementList();
+    //updateElementList();
     
     // Mostrar resumen
     const summary = `${municipioNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas`;
@@ -989,19 +995,42 @@ async function applyLocalidadFilter() {
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
     
-    // 4. Encontrar y renderizar municipio padre
-    const municipioPadre = municipiosData.find(municipio => {
-        return municipio.nam === localidad.partido || 
-               municipio.nam === localidad.partido_ig;
+  // 3. Renderizar solo la localidad seleccionada
+layerGroups.localidades.clearLayers();
+renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
+
+// ==== AGREGAR ESTO: Asegurar que localidades esté visible ====
+if (!map.hasLayer(layerGroups.localidades)) {
+    layerGroups.localidades.addTo(map);
+}
+// =============================================================
+
+// 4. CARGAR municipio padre pero APAGARLO inicialmente
+const municipioPadre = municipiosData.find(municipio => {
+    return municipio.nam === localidad.partido || 
+           municipio.nam === localidad.partido_ig;
     });
-    
+
     if (municipioPadre) {
-        layerGroups.municipios.clearLayers();
-        renderDataToLayer('municipios', [municipioPadre]);
-    } else {
-        layerGroups.municipios.clearLayers();
+    // Limpiar capa anterior
+    layerGroups.municipios.clearLayers();
+    
+    // Renderizar el municipio padre en memoria
+    renderDataToLayer('municipios', [municipioPadre], filteredStyle.municipios);
+    
+    // APAGAR: remover del mapa (pero queda cargado en layerGroup)
+    if (map.hasLayer(layerGroups.municipios)) {
+        map.removeLayer(layerGroups.municipios);
     }
     
+    // Desmarcar checkbox
+    const municipiosCheckbox = document.getElementById('layer-municipios');
+    if (municipiosCheckbox) {
+        municipiosCheckbox.checked = false;
+    }
+    } else {
+    layerGroups.municipios.clearLayers();
+    }
     // 5. Hacer zoom a la localidad
     if (localidad.geom) {
         zoomToGeometry(localidad.geom);
@@ -1043,7 +1072,7 @@ async function applyLocalidadFilter() {
         fitViewToLayerGroup('localidades');
     }, 500);
     
-    updateElementList();
+    //updateElementList();
     
     // Mostrar resumen
     const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas`;
@@ -1126,6 +1155,18 @@ function clearFilter() {
         renderDataToLayer('localidades', localidadesData);
     }
     
+    // ==== AGREGAR: Asegurar que municipios esté visible y checkbox marcado ====
+    if (!map.hasLayer(layerGroups.municipios)) {
+    layerGroups.municipios.addTo(map);
+    }
+
+    // Marcar checkbox de municipios
+    const municipiosCheckbox = document.getElementById('layer-municipios');
+    if (municipiosCheckbox) {
+    municipiosCheckbox.checked = true;
+}
+// ========================================================================
+
     // Ocultar leyenda
     document.getElementById('toggleLegendBtn').style.display = 'none';
     document.getElementById('legend').style.display = 'none';
@@ -1134,17 +1175,17 @@ function clearFilter() {
     map.setView([-36.14685, -60.28183], 6);
     
     // Actualizar lista
-    updateElementList();
+    //updateElementList();
     
     showStatus('Filtro limpiado', 'success');
-}
+    }
 
 // ===============================
 // FUNCIONES AUXILIARES
 // ===============================
 
 // Actualizar lista de elementos
-function updateElementList() {
+/*function updateElementList() {
     const elementList = document.getElementById('elementList');
     if (!elementList) return;
     
@@ -1188,7 +1229,7 @@ function updateElementList() {
     if (totalElements === 0) {
         elementList.innerHTML = '<div style="padding: 10px; text-align: center; color: #999;">Sin elementos cargados</div>';
     }
-}
+}*/
 
 // Manejar cambios en checkboxes
 function handleCheckboxChange() {
@@ -1207,5 +1248,5 @@ function handleCheckboxChange() {
         }
     }
     
-    updateElementList();
+    //updateElementList();
 }
