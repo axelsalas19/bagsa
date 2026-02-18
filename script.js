@@ -185,10 +185,10 @@ function initEventListeners() {
     });
     
     // Event listeners para filtros
-    document.getElementById('applyMunicipioFilter').addEventListener('click', applyMunicipioFilter);
+    //document.getElementById('applyMunicipioFilter').addEventListener('click', applyMunicipioFilter);
     document.getElementById('applyLocalidadFilter').addEventListener('click', applyLocalidadFilter);
     document.getElementById('applyUnidadRegionalFilter').addEventListener('click',applyUnidadRegionalFilter );
-    document.getElementById('clearMunicipioFilter').addEventListener('click', clearFilter);
+    //document.getElementById('clearMunicipioFilter').addEventListener('click', clearFilter);
     document.getElementById('clearLocalidadFilter').addEventListener('click', clearFilter);
     document.getElementById('clearUnidadRegionalFilter').addEventListener('click', clearFilter);
 
@@ -537,7 +537,7 @@ function renderRedGasWithDiameterClassification(data) {
                 
                 const layerStyle = {
                     color: color,
-                    weight: 4, // Más grueso para mejor visibilidad
+                    weight: 4, // 
                     opacity: 0.8,
                     className: getDiameterClass(diametro) // Agregar clase CSS
                 };
@@ -654,7 +654,7 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
 // CARGA DE DATOS BASE
 // ===============================
 
-async function loadBaseData() {
+async function loadBaseData(){
     try {
         console.log('Iniciando carga de datos base');
         
@@ -665,9 +665,19 @@ async function loadBaseData() {
         if (municipiosData.length > 0) {
             // Renderizar municipios inicialmente
             renderDataToLayer('municipios', municipiosData);
-            populateMunicipioSelect();
-            enableMunicipioFilter();
-            console.log('Filtro municipio habilitado');
+            //populateMunicipioSelect();
+            //enableMunicipioFilter();
+            //console.log('Filtro municipio habilitado');
+             if (!map.hasLayer(layerGroups.municipios)) {
+            layerGroups.municipios.addTo(map);
+            }
+        // ==== ACTIVAR Y MARCAR CHECKBOX DE MUNICIPIOS ====
+            const municipiosCheckbox = document.getElementById('layer-municipios');
+            if (municipiosCheckbox) {
+                municipiosCheckbox.checked = true;
+                municipiosCheckbox.disabled = false;
+            }
+
         }
         
         // Cargar localidades
@@ -680,8 +690,15 @@ async function loadBaseData() {
             populateLocalidadSelect();
             enableLocalidadFilter();
             console.log('Filtro localidad habilitado');
-        }
-        
+            if (!map.hasLayer(layerGroups.localidades)) {
+            layerGroups.localidades.addTo(map);
+            }
+         // ==== ACTIVAR Y MARCAR CHECKBOX DE LOCALIDADES ====
+            const localidadesCheckbox = document.getElementById('layer-localidades');
+            if (localidadesCheckbox) {
+                localidadesCheckbox.checked = true;
+                localidadesCheckbox.disabled = false;
+            }
             populateUnidadRegionalSelect();
             console.log('Filtro unidad regional habilitado');
 
@@ -690,9 +707,9 @@ async function loadBaseData() {
         
         console.log('Datos base cargados completamente');
         showStatus('Datos base cargados. Seleccione un filtro para ver calles y red de gas.', 'success');
-        
-    } catch (error) {
-        console.error('Error cargando datos base:', error);
+        }
+}catch (error) {
+    console.error('Error cargando datos base:', error);
     }
 }
 
@@ -701,7 +718,7 @@ async function loadBaseData() {
 // ===============================
 
 // Poblar select de municipios
-function populateMunicipioSelect() {
+/*function populateMunicipioSelect() {
     const select = document.getElementById('selectMunicipio');
     if (!select) return;
     
@@ -729,7 +746,7 @@ function populateMunicipioSelect() {
     if (debugInfo) {
         debugInfo.textContent = `${municipiosData.length} municipios cargados`;
     }
-}
+}*/
 
 function populateUnidadRegionalSelect(){
     const selectUnidadRegional = document.getElementById('selectUnidadRegional');
@@ -787,7 +804,7 @@ function populateLocalidadSelect() {
 }
 
 // Habilitar filtro de municipio
-function enableMunicipioFilter() {
+/*function enableMunicipioFilter() {
     const select = document.getElementById('selectMunicipio');
     const applyBtn = document.getElementById('applyMunicipioFilter');
     const clearBtn = document.getElementById('clearMunicipioFilter');
@@ -795,7 +812,7 @@ function enableMunicipioFilter() {
     if (select) select.disabled = false;
     if (applyBtn) applyBtn.disabled = false;
     if (clearBtn) clearBtn.disabled = false;
-}
+}*/
 
 // Habilitar filtro de localidad
 function enableLocalidadFilter() {
@@ -857,7 +874,7 @@ function enableDependentLayers(filterName) {
 // ===============================
 
 // Aplicar filtro por municipio CON POSTGIS
-async function applyMunicipioFilter() {
+/*async function applyMunicipioFilter() {
     console.log('Aplicando filtro municipio con PostGIS...');
     
     const select = document.getElementById('selectMunicipio');
@@ -969,7 +986,7 @@ async function applyMunicipioFilter() {
     showStatus(summary, 'success');
     
     console.log('Filtro municipio aplicado completamente con PostGIS');
-}
+}*/
 
 // Aplicar filtro por localidad CON POSTGIS
 async function applyLocalidadFilter() {
@@ -1010,18 +1027,15 @@ async function applyLocalidadFilter() {
     
     // 1. Habilitar capas dependientes
     enableDependentLayers(localidadNombre);
-    
+    /*
     // 2. Activar checkboxes
     document.getElementById('layer-municipios').checked = true;
     document.getElementById('layer-localidades').checked = true;
     document.getElementById('layer-red_de_gas').checked = true;
-    document.getElementById('layer-calles').checked = true;
+    document.getElementById('layer-calles').checked = true;*/
     
-    // 3. Renderizar solo la localidad seleccionada
-    layerGroups.localidades.clearLayers();
-    renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
     
-  // 3. Renderizar solo la localidad seleccionada
+// 3. Renderizar solo la localidad seleccionada
 layerGroups.localidades.clearLayers();
 renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
 
@@ -1029,6 +1043,12 @@ renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
 if (!map.hasLayer(layerGroups.localidades)) {
     layerGroups.localidades.addTo(map);
 }
+
+const localidadesCheckbox = document.getElementById('layer-localidades');
+if (localidadesCheckbox) {
+    localidadesCheckbox.checked = true;
+}
+
 // =============================================================
 
 // 4. CARGAR municipio padre pero APAGARLO inicialmente
@@ -1053,8 +1073,11 @@ const municipioPadre = municipiosData.find(municipio => {
     const municipiosCheckbox = document.getElementById('layer-municipios');
     if (municipiosCheckbox) {
         municipiosCheckbox.checked = false;
+        municipiosCheckbox.disabled = false;
+        }
+    console.log('Capa de municipios cargada y habilitada');
     }
-    } else {
+    else {
     layerGroups.municipios.clearLayers();
     }
     // 5. Hacer zoom a la localidad
@@ -1153,6 +1176,7 @@ async function applyUnidadRegionalFilter() {
     const localidadesCheckbox = document.getElementById('layer-localidades');
     if (localidadesCheckbox) {
         localidadesCheckbox.checked = true;
+        localidadesCheckbox.disabled = false;
     }
     
     // 3. Obtener municipios únicos de las localidades filtradas
@@ -1199,11 +1223,11 @@ function clearFilter() {
     currentFilter = null;
     
     // Limpiar selects
-    const selectMunicipio = document.getElementById('selectMunicipio');
+    //const selectMunicipio = document.getElementById('selectMunicipio');
     const selectLocalidad = document.getElementById('selectLocalidad');
     const selectUnidadRegional = document.getElementById('selectUnidadRegional');
     
-    if (selectMunicipio) selectMunicipio.value = '';
+    //if (selectMunicipio) selectMunicipio.value = '';
     if (selectLocalidad) selectLocalidad.value = '';
     if (selectUnidadRegional) selectUnidadRegional.value = '';
     
