@@ -350,3 +350,213 @@ select {
         width: 90%;
     }
 }
+
+/* LISTA LOCALIDADES UNIDAD REG.  */
+/* ============================== */
+
+#localidadesURContainer {
+    margin: 4px 0;
+    padding: 6px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+#localidadesURList {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.localidad-ur-item {
+    padding: 5px 8px;
+    margin: 3px 0;
+    background: #f0f7ff;
+    border-left: 3px solid #007bff;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #333;
+}
+
+.localidad-ur-item:hover {
+    background: #d0e8ff;
+    color: #0056b3;
+}
+/* ============================== */
+/* PANEL DE BÚSQUEDA              */
+/* ============================== */
+
+#toggleSearchBtn {
+    position: fixed;
+    top: 15px;
+    right: 10px;
+    z-index: 1001;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    width: auto;
+    margin: 0;
+}
+
+#toggleSearchBtn:hover { background: #0056b3; }
+
+#searchPanel {
+    position: fixed;
+    top: 55px;
+    right: 10px;
+    width: 300px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.25);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    max-height: 80vh;
+}
+
+#searchPanel.open { display: flex; }
+
+#searchPanelHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #007bff;
+    color: white;
+    border-radius: 6px 6px 0 0;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+#closeSearchBtn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    width: auto;
+    padding: 0 4px;
+    margin: 0;
+}
+
+#closeSearchBtn:hover {
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+}
+
+#searchPanelBody {
+    padding: 12px;
+    overflow-y: auto;
+}
+
+#searchPanelBody select,
+#searchPanelBody input[type="text"] {
+    width: 100%;
+    padding: 7px;
+    margin: 4px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+#searchBtn {
+    width: 100%;
+    margin: 6px 0 4px 0;
+    padding: 7px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#searchBtn:hover { background: #0056b3; }
+
+#searchResults {
+    margin-top: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.search-result-item {
+    padding: 8px 10px;
+    margin: 4px 0;
+    background: #f8f9fa;
+    border-left: 3px solid #007bff;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.search-result-item:hover { background: #e9ecef; }
+
+.search-result-item .result-main {
+    font-weight: bold;
+    color: #333;
+}
+
+.search-result-item .result-sub {
+    color: #666;
+    margin-top: 2px;
+}
+
+.search-no-results {
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    padding: 15px 0;
+}
+
+/* ============================== */
+/* POPUP EDICIÓN DE ESTADO        */
+/* ============================== */
+
+.popup-estado-select {
+    margin-top: 6px;
+    width: 100%;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+.popup-save-btn {
+    margin-top: 5px;
+    width: 100%;
+    padding: 5px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.popup-save-btn:hover { background: #218838; }
+
+.popup-save-msg {
+    font-size: 11px;
+    margin-top: 4px;
+    text-align: center;
+    min-height: 16px;
+}
+
+@media (max-width: 768px) {
+    #toggleSearchBtn {
+        top: 70px;
+        right: 15px;
+    }
+    #searchPanel {
+        width: 90%;
+        right: 5%;
+        top: 115px;
+    }
+}

@@ -17,7 +17,7 @@
     <!-- Botón para movil -->
     <button id="mobileToggleBtn">☰</button>
     <div id="sidebar">
-        <h2>Geoportal - Bagsa 2026</h2>
+        <h2>Geoportal BAGSA</h2>
         
         <div id="status"></div>
         
@@ -45,6 +45,12 @@
             <button class="filter-btn clear" id="clearUnidadRegionalFilter" disabled>Limpiar</button>
         </div>
 
+        <!-- Lista de localidades de la unidad regional -->
+        <div id="localidadesURContainer" style="display:none;">
+            <h3>Localidades de la Unidad Regional</h3>
+            <div id="localidadesURList"></div>
+        </div>
+        
         <!-- Filtro por Localidad -->
         <div class="filter-section">
             <h3>Filtrar por Area de Servicio</h3>
@@ -85,9 +91,37 @@
                 Calles (requiere filtro)
             </label>
         </div>
+
+        <div class="layer-item">
+            <label id="label-suministros">
+                <input type="checkbox" id="layer-suministros" data-table="suministros" disabled>
+                Suministros (requiere filtro)
+            </label>
+        </div>
         
     </div>
     
+    <!-- Botón búsqueda -->
+    <button id="toggleSearchBtn" title="Buscar suministro">🔍 Buscar</button>
+
+    <!-- Panel de búsqueda -->
+    <div id="searchPanel">
+        <div id="searchPanelHeader">
+            <span>Buscar Suministro</span>
+            <button id="closeSearchBtn">✕</button>
+        </div>
+        <div id="searchPanelBody">
+            <select id="searchField">
+                <option value="Nombre">Por Nombre</option>
+                <option value="medidor">Por Medidor</option>
+                <option value="Cliente">Por Cliente</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Ingrese texto a buscar...">
+            <button id="searchBtn">Buscar</button>
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
     <div id="map"><button id="toggleLegendBtn" style="display: none;">Mostrar Leyenda</button></div>
     
     <!-- Leaflet JS -->
