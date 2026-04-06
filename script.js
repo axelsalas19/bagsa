@@ -1129,26 +1129,29 @@ function enableDependentLayers(filterName) {
 
 // Aplicar filtro por localidad CON POSTGIS
 async function applyLocalidadFilter() {
-    console.log('Aplicando filtro localidad con PostGIS...');
-    
     const select = document.getElementById('selectLocalidad');
     if (!select) return;
-    
     const localidadNombre = select.value;
-    
     if (!localidadNombre) {
         showStatus('Seleccione una localidad', 'error');
         return;
     }
-    
-    // Buscar localidad
+    // Resaltar filtro activo
+    document.querySelectorAll('.filter-section').forEach(s => s.classList.remove('active-filter'));
+    select.parentElement.classList.add('active-filter');
+
+    await aplicarFiltroLocalidad(localidadNombre);
+}
+
+async function aplicarFiltroLocalidad(localidadNombre) {
+    console.log('Aplicando filtro localidad con PostGIS...');
+
     const localidad = localidadesData.find(l => l.nombre === localidadNombre);
-    
     if (!localidad) {
         showStatus('Localidad no encontrada', 'error');
         return;
     }
-    
+
     currentFilter = {
         type: 'localidad',
         name: localidadNombre,
@@ -1156,132 +1159,64 @@ async function applyLocalidadFilter() {
         geometry: localidad.geom,
         num_fimm: localidad.num_fimm ? [localidad.num_fimm] : []
     };
-    
-    showStatus(`Filtrando ${localidadNombre} con PostGIS...`, 'loading');
-    
-    // Resaltar filtro activo
-    document.querySelectorAll('.filter-section').forEach(section => {
-        section.classList.remove('active-filter');
-    });
-    select.parentElement.classList.add('active-filter');
-    
+
+    showStatus(`Filtrando ${localidadNombre}...`, 'loading');
+
     // 1. Habilitar capas dependientes
     enableDependentLayers(localidadNombre);
-    /*
-    // 2. Activar checkboxes
-    document.getElementById('layer-municipios').checked = true;
-    document.getElementById('layer-localidades').checked = true;
-    document.getElementById('layer-red_de_gas').checked = true;
-    document.getElementById('layer-calles').checked = true;*/
-    
-    
-// 3. Renderizar solo la localidad seleccionada
-layerGroups.localidades.clearLayers();
-renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
 
-// ==== AGREGAR ESTO: Asegurar que localidades esté visible ====
-if (!map.hasLayer(layerGroups.localidades)) {
-    layerGroups.localidades.addTo(map);
-}
+    // 2. Renderizar solo la localidad seleccionada
+    layerGroups.localidades.clearLayers();
+    renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
+    if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
+    const localidadesCheckbox = document.getElementById('layer-localidades');
+    if (localidadesCheckbox) localidadesCheckbox.checked = true;
 
-const localidadesCheckbox = document.getElementById('layer-localidades');
-if (localidadesCheckbox) {
-    localidadesCheckbox.checked = true;
-}
-
-// =============================================================
-
-// 4. CARGAR municipio padre pero APAGARLO inicialmente
-const municipioPadre = municipiosData.find(municipio => {
-    return municipio.nam === localidad.partido || 
-           municipio.nam === localidad.partido_ig;
-    });
-
+    // 3. Municipio padre: cargar pero apagado
+    const municipioPadre = municipiosData.find(m => m.nam === localidad.partido || m.nam === localidad.partido_ig);
+    layerGroups.municipios.clearLayers();
     if (municipioPadre) {
-    // Limpiar capa anterior
-    layerGroups.municipios.clearLayers();
-    
-    // Renderizar el municipio padre en memoria
-    renderDataToLayer('municipios', [municipioPadre], filteredStyle.municipios);
-    
-    // APAGAR: remover del mapa (pero queda cargado en layerGroup)
-    if (map.hasLayer(layerGroups.municipios)) {
-        map.removeLayer(layerGroups.municipios);
+        renderDataToLayer('municipios', [municipioPadre], filteredStyle.municipios);
+        if (map.hasLayer(layerGroups.municipios)) map.removeLayer(layerGroups.municipios);
+        const municipiosCheckbox = document.getElementById('layer-municipios');
+        if (municipiosCheckbox) { municipiosCheckbox.checked = false; municipiosCheckbox.disabled = false; }
     }
-    
-    // Desmarcar checkbox
-    const municipiosCheckbox = document.getElementById('layer-municipios');
-    if (municipiosCheckbox) {
-        municipiosCheckbox.checked = false;
-        municipiosCheckbox.disabled = false;
-        }
-    console.log('Capa de municipios cargada y habilitada');
-    }
-    else {
-    layerGroups.municipios.clearLayers();
-    }
-    // 5. Hacer zoom a la localidad
-    if (localidad.geom) {
-        zoomToGeometry(localidad.geom);
-    }
-    
-    // 6. CARGAR Y RENDERIZAR CALLES CON POSTGIS (LOCALIDAD)
-    console.log('Cargando calles de la localidad con PostGIS...');
+
+    // 4. Zoom a la localidad
+    if (localidad.geom) zoomToGeometry(localidad.geom);
+
+    // 5. Calles
     const callesFiltradas = await loadFilteredPostGIS('calles', 'localidad', localidadNombre);
     layerGroups.calles.clearLayers();
     if (callesFiltradas.length > 0) {
         renderDataToLayer('calles', callesFiltradas);
-        if (!map.hasLayer(layerGroups.calles)) {
-            layerGroups.calles.addTo(map);
-        }
+        if (!map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
         console.log(`✓ ${callesFiltradas.length} calles cargadas`);
-    } else {
-        console.log('✗ No se encontraron calles en la localidad');
-        showStatus(`No se encontraron calles en ${localidadNombre}`, 'warning');
     }
-    
-    // 7. CARGAR Y RENDERIZAR RED DE GAS CON POSTGIS (LOCALIDAD)
-    console.log('Cargando red de gas de la localidad con PostGIS...');
+
+    // 6. Red de gas
     const redGasFiltrada = await loadFilteredPostGIS('red_de_gas', 'localidad', localidadNombre);
     layerGroups.red_de_gas.clearLayers();
     if (redGasFiltrada.length > 0) {
-        // Usar estilo clasificado por diámetro
         renderRedGasWithDiameterClassification(redGasFiltrada);
-        if (!map.hasLayer(layerGroups.red_de_gas)) {
-            layerGroups.red_de_gas.addTo(map);
-        }
-        console.log(`✓ ${redGasFiltrada.length} elementos de red de gas cargados`);
-    } else {
-        console.log('✗ No se encontró red de gas en la localidad');
-        showStatus(`No se encontró red de gas en ${localidadNombre}`, 'warning');
+        if (!map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
+        console.log(`✓ ${redGasFiltrada.length} red de gas cargada`);
     }
 
-    // 8. CARGAR Y RENDERIZAR SUMINISTROS CON POSTGIS (LOCALIDAD)
-    console.log('Cargando suministros de la localidad con PostGIS...');
+    // 7. Suministros
     const suministrosFiltrados = await loadFilteredPostGIS('suministros', 'localidad', localidadNombre);
     layerGroups.suministros.clearLayers();
     if (suministrosFiltrados.length > 0) {
         renderDataToLayer('suministros', suministrosFiltrados);
-        if (!map.hasLayer(layerGroups.suministros)) {
-            layerGroups.suministros.addTo(map);
-        }
+        if (!map.hasLayer(layerGroups.suministros)) layerGroups.suministros.addTo(map);
         console.log(`✓ ${suministrosFiltrados.length} suministros cargados`);
-    } else {
-        console.log('✗ No se encontraron suministros en la localidad');
     }
-    
-    // Ajustar vista
-    setTimeout(() => {
-        fitViewToLayerGroup('localidades');
-    }, 500);
-    
-    //updateElementList();
-    
-    // Mostrar resumen
-    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas`;
+
+    setTimeout(() => fitViewToLayerGroup('localidades'), 500);
+
+    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros`;
     showStatus(summary, 'success');
-    
-    console.log('Filtro localidad aplicado completamente con PostGIS');
+    console.log('Filtro localidad aplicado completamente');
 }
 
 async function applyUnidadRegionalFilter() {
@@ -1420,11 +1355,12 @@ function mostrarListaLocalidadesUR(localidades) {
         const item = document.createElement('div');
         item.className = 'localidad-ur-item';
         item.textContent = loc.nombre || `Localidad ${loc.num_fimm}`;
-        item.addEventListener('click', () => {
-            fitViewToLayerGroup('localidades');
-            // Zoom a esta localidad específica
-            const geom = loc.geom || loc.wkt_geom;
-            if (geom) zoomToGeometry(geom);
+        item.addEventListener('click', async () => {
+            // Actualizar el select de área de servicio
+            const selectLocalidad = document.getElementById('selectLocalidad');
+            if (selectLocalidad) selectLocalidad.value = loc.nombre;
+            // Aplicar el filtro completo de localidad
+            await aplicarFiltroLocalidad(loc.nombre);
         });
         list.appendChild(item);
     });
