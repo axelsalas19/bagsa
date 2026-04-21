@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geoportal - Supabase</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Geoportal - BAGSA</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
@@ -14,25 +14,15 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Botón para movil -->
+    <!-- Botón para móvil -->
     <button id="mobileToggleBtn">☰</button>
+    
     <div id="sidebar">
         <h2>Geoportal BAGSA</h2>
         
         <div id="status"></div>
         
         <button id="loadDataBtn">Cargar Datos Base</button>
-        
-        <!-- Filtro por Municipio 
-        <div class="filter-section">
-            <h3>Filtrar por Municipio</h3>
-            <select id="selectMunicipio" disabled>
-                <option value="">-- Seleccione un municipio --</option>
-            </select>
-            <div class="debug-info" id="municipioDebug"></div>
-            <button class="filter-btn" id="applyMunicipioFilter" disabled>Aplicar</button>
-            <button class="filter-btn clear" id="clearMunicipioFilter" disabled>Limpiar</button>
-        </div>-->
         
         <!-- Filtro por Unidad Regional -->
         <div class="filter-section">
@@ -47,20 +37,21 @@
 
         <!-- Lista de localidades de la unidad regional -->
         <div id="localidadesURContainer" style="display:none;">
-            <h3>Localidades de la Unidad Regional</h3>
+            <h3>Áreas de Servicio de la Unidad Regional</h3>
             <div id="localidadesURList"></div>
         </div>
         
         <!-- Filtro por Localidad -->
         <div class="filter-section">
-            <h3>Filtrar por Area de Servicio</h3>
+            <h3>Filtrar por Área de Servicio</h3>
             <select id="selectLocalidad" disabled>
                 <option value="">-- Seleccione un Área de Servicio --</option>
             </select>
-            <!--<div class="debug-info" id="localidadDebug"></div>-->
             <button class="filter-btn" id="applyLocalidadFilter" disabled>Aplicar</button>
             <button class="filter-btn clear" id="clearLocalidadFilter" disabled>Limpiar</button>
         </div>
+        
+        <!-- El panel de ruteo se insertará dinámicamente aquí -->
         
         <h3>Capas Disponibles</h3>
         
@@ -98,7 +89,6 @@
                 Suministros (requiere filtro)
             </label>
         </div>
-        
     </div>
     
     <!-- Botón búsqueda -->
@@ -122,7 +112,37 @@
         </div>
     </div>
 
-    <div id="map"><button id="toggleLegendBtn" style="display: none;">Mostrar Leyenda</button></div>
+    <div id="map">
+        <button id="toggleLegendBtn" style="display: none;">Diámetros de cañería</button>
+    </div>
+    
+    <div id="legend">
+        <h4>Diámetros de Red de Gas</h4>
+        <div class="legend-item">
+            <div class="legend-color diameter-50"></div>
+            <div class="legend-label">Ø 50 mm</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color diameter-63"></div>
+            <div class="legend-label">Ø 63 mm</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color diameter-90"></div>
+            <div class="legend-label">Ø 90 mm</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color diameter-125"></div>
+            <div class="legend-label">Ø 125 mm</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color diameter-180"></div>
+            <div class="legend-label">Ø 180 mm</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color diameter-other"></div>
+            <div class="legend-label">Otros diámetros</div>
+        </div>
+    </div>
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -137,35 +157,5 @@
     
     <!-- Script principal -->
     <script src="script.js"></script>
-    <!-- index.html - Agregar antes del cierre de </body> -->
-
-
-<div id="legend">
-    <h4>Diámetros de Red de Gas</h4>
-    <div class="legend-item">
-        <div class="legend-color diameter-50"></div>
-        <div class="legend-label">Ø 50 mm</div>
-    </div>
-    <div class="legend-item">
-        <div class="legend-color diameter-63"></div>
-        <div class="legend-label">Ø 63 mm</div>
-    </div>
-    <div class="legend-item">
-        <div class="legend-color diameter-90"></div>
-        <div class="legend-label">Ø 90 mm</div>
-    </div>
-    <div class="legend-item">
-        <div class="legend-color diameter-125"></div>
-        <div class="legend-label">Ø 125 mm</div>
-    </div>
-    <div class="legend-item">
-        <div class="legend-color diameter-180"></div>
-        <div class="legend-label">Ø 180 mm</div>
-    </div>
-    <div class="legend-item">
-        <div class="legend-color diameter-other"></div>
-        <div class="legend-label">Otros diámetros</div>
-    </div>
-</div>
 </body>
 </html>

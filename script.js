@@ -4,12 +4,31 @@ let municipiosData = [];
 let localidadesData = [];
 let callesData = [];
 let redGasData = [];
-let suministrosData = [];
+let suministrosData = [];   // Cache completo — nunca se limpia con clearFilter
 let currentFilter = null;
 let map;
 let layerGroups;
 let styles;
 let filteredStyle;
+
+// Variables módulo de ruteo
+let ruteoLayerGroup       = null;  // Capa de rutas en el mapa
+let ruteoSinAsignarLayer  = null;  // Capa de puntos sin asignar
+let suministrosConRuta    = [];    // Suministros con ruta+orden completos
+let suministrosSinRuta    = [];    // Suministros sin ruta o sin orden
+let borrador              = [];    // Cambios pendientes de confirmar
+let suministrosBorradorMap = {};   // medidor → {ruta, orden} estado en borrador
+let modoEdicion           = false; // true cuando el usuario está asignando puntos
+let localidadFiltroActual = null;  // nombre de la localidad activa
+let rutasVisibles         = new Map(); // Para controlar qué rutas están visibles
+let capaRutasGroup        = null;  // Capa para las rutas visualizadas
+
+// Paleta de colores para rutas
+const RUTA_COLORES = [
+    '#e63946','#2a9d8f','#e9c46a','#f4a261','#6a4c93',
+    '#1982c4','#8ac926','#ff595e','#6a0572','#0077b6',
+    '#d90429','#2b2d42','#ffb703','#fb8500','#06d6a0'
+];
 
 // Configuración
 const SUPABASE_URL = 'https://ahuxvjoykgzimshlcjsb.supabase.co';
@@ -23,28 +42,15 @@ window.addEventListener('load', function() {
 
 function initApp() {
     try {
-        // Inicializar Supabase
         const { createClient } = supabase;
         supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
         console.log('Supabase conectado');
         
-        // Inicializar mapa
         initMap();
-        
-        // Inicializar estilos
         initStyles();
-        
-        // Inicializar grupos de capas
         initLayerGroups();
-        
-        // Inicializar event listeners
         initEventListeners();
-
-        // Inicializar panel de búsqueda
         initSearchPanel();
-        
-        
-        
         
     } catch (error) {
         console.error('Error inicializando la aplicación:', error);
@@ -53,11 +59,10 @@ function initApp() {
 }
 
 function initMap() {
-    // Inicializar mapa centrado en Buenos Aires
     map = L.map('map').setView([-36.14685, -60.28183], 6);
     console.log('Mapa inicializado');
     
-    // Definir capas base
+    // Capas base
     const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
@@ -80,10 +85,8 @@ function initMap() {
         subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
     });
     
-    // Agregar capa base por defecto (OpenStreetMap)
     osmLayer.addTo(map);
     
-    // Crear control de capas base
     const baseMaps = {
         "OpenStreetMap": osmLayer,
         "Satélite": satelliteLayer,
@@ -91,50 +94,26 @@ function initMap() {
         "ArgenMap Gris": argenmapLayer
     };
     
+    // Agregar control de zoom
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+    
+    // Agregar control de capas base
     L.control.layers(baseMaps, null, { position: 'topleft' }).addTo(map);
     
-    console.log('Capas base agregadas');
+    console.log('Capas base y controles agregados');
 }
 
 function initStyles() {
     styles = {
-        municipios: {
-            color: '#232323',
-            weight: 1,
-            fillOpacity: 0.1,
-            fillColor: '#FFFFFF'
-        },
-        localidades: {
-            color: '#0078ff',
-            weight: 2,
-            fillOpacity: 0.1,
-            fillColor: '#5da6f8'
-        },
-        red_de_gas: {
-            color: '#ff0000',
-            weight: 2,
-            opacity: 0.7
-        },
-        calles: {
-            color: '#333333',
-            weight: 2,
-            opacity: 0.6
-        }
+        municipios: { color: '#232323', weight: 1, fillOpacity: 0.1, fillColor: '#FFFFFF' },
+        localidades: { color: '#0078ff', weight: 2, fillOpacity: 0.1, fillColor: '#5da6f8' },
+        red_de_gas: { color: '#ff0000', weight: 2, opacity: 0.7 },
+        calles: { color: '#333333', weight: 2, opacity: 0.6 }
     };
     
     filteredStyle = {
-        municipios: {
-            color: '#232323',
-            weight: 1,
-            fillOpacity: 0.1,
-            fillColor: '#ffffff'
-        },
-        localidades: {
-            color: '#2466e9',
-            weight: 2,
-            fillOpacity: 0.2,
-            fillColor: '#e3e6eb'
-        }
+        municipios: { color: '#232323', weight: 1, fillOpacity: 0.1, fillColor: '#ffffff' },
+        localidades: { color: '#2466e9', weight: 2, fillOpacity: 0.2, fillColor: '#e3e6eb' }
     };
 }
 
@@ -147,125 +126,91 @@ function initLayerGroups() {
         suministros: L.layerGroup()
     };
 
-    // Ajustar radio de suministros según zoom
     map.on('zoomend', function() {
         const zoom = map.getZoom();
-        const radius = zoom >= 16 ? 5 : zoom >= 14 ? 4 : zoom >= 12 ? 3 : 2;
-        layerGroups.suministros.eachLayer(function(layer) {
-            if (layer.eachLayer) {
-                layer.eachLayer(function(subLayer) {
-                    if (subLayer.setRadius) subLayer.setRadius(radius);
-                });
-            } else if (layer.setRadius) {
-                layer.setRadius(radius);
-            }
-        });
+        const radius = zoom >= 16 ? 6 : zoom >= 14 ? 5 : zoom >= 12 ? 4 : 3;
+        if (layerGroups.suministros) {
+            layerGroups.suministros.eachLayer(function(layer) {
+                if (layer.eachLayer) {
+                    layer.eachLayer(function(subLayer) {
+                        if (subLayer.setRadius) subLayer.setRadius(radius);
+                    });
+                } else if (layer.setRadius) {
+                    layer.setRadius(radius);
+                }
+            });
+        }
     });
 }
 
 function initEventListeners() {
-    
-    // Crear botón toggle para móvil
     const mobileToggleBtn = document.getElementById('mobileToggleBtn');
     const sidebar = document.getElementById('sidebar');
     
-    // Crear overlay dinámicamente
     const sidebarOverlay = document.createElement('div');
     sidebarOverlay.id = 'sidebarOverlay';
     document.body.appendChild(sidebarOverlay);
     
-    // Event listener para el botón móvil
-    mobileToggleBtn.addEventListener('click', function() {
-        sidebar.classList.toggle('active');
-        this.textContent = sidebar.classList.contains('active') ? '✕' : '☰';
-    });
+    if (mobileToggleBtn) {
+        mobileToggleBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('active');
+            this.textContent = sidebar.classList.contains('active') ? '✕' : '☰';
+            sidebarOverlay.classList.toggle('active');
+        });
+    }
     
-    // Cerrar sidebar al hacer clic en el overlay
     sidebarOverlay.addEventListener('click', function() {
         sidebar.classList.remove('active');
-        mobileToggleBtn.textContent = '☰';
+        if (mobileToggleBtn) mobileToggleBtn.textContent = '☰';
+        sidebarOverlay.classList.remove('active');
     });
     
-    // Cerrar sidebar al hacer clic en un enlace dentro del sidebar
-    sidebar.addEventListener('click', function(e) {
-        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') {
-            // Cerrar sidebar después de un breve retraso en móvil
-            if (window.innerWidth <= 768) {
-                setTimeout(() => {
-                    sidebar.classList.remove('active');
-                    mobileToggleBtn.textContent = '☰';
-                }, 300);
-            }
-        }
-    });
-    
-    // Inicializar event listeners para checkboxes
     document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
     });
     
-    // Event listeners para filtros
-    //document.getElementById('applyMunicipioFilter').addEventListener('click', applyMunicipioFilter);
-    document.getElementById('applyLocalidadFilter').addEventListener('click', applyLocalidadFilter);
-    document.getElementById('applyUnidadRegionalFilter').addEventListener('click',applyUnidadRegionalFilter );
-    //document.getElementById('clearMunicipioFilter').addEventListener('click', clearFilter);
-    document.getElementById('clearLocalidadFilter').addEventListener('click', clearFilter);
-    document.getElementById('clearUnidadRegionalFilter').addEventListener('click', clearFilter);
-
-    // Botón para verificar tablas
-    /*document.getElementById('checkTablesBtn').addEventListener('click', async function() {
-        this.disabled = true;
-        showStatus('Verificando tablas disponibles...', 'loading');
-        
-        const tablesToCheck = ['municipios', 'localidades', 'red_de_gas', 'calles'];
-        let availableTables = [];
-        
-        for (const table of tablesToCheck) {
-            try {
-                const { count, error } = await supabaseClient
-                    .from(table)
-                    .select('*', { count: 'exact', head: true });
-                
-                if (!error && count !== null) {
-                    availableTables.push(`${table} (${count} registros)`);
+    const applyLocalidadFilterBtn = document.getElementById('applyLocalidadFilter');
+    const applyUnidadRegionalFilterBtn = document.getElementById('applyUnidadRegionalFilter');
+    const clearLocalidadFilterBtn = document.getElementById('clearLocalidadFilter');
+    const clearUnidadRegionalFilterBtn = document.getElementById('clearUnidadRegionalFilter');
+    const loadDataBtn = document.getElementById('loadDataBtn');
+    const toggleLegendBtn = document.getElementById('toggleLegendBtn');
+    
+    if (applyLocalidadFilterBtn) applyLocalidadFilterBtn.addEventListener('click', applyLocalidadFilter);
+    if (applyUnidadRegionalFilterBtn) applyUnidadRegionalFilterBtn.addEventListener('click', applyUnidadRegionalFilter);
+    if (clearLocalidadFilterBtn) clearLocalidadFilterBtn.addEventListener('click', clearFilter);
+    if (clearUnidadRegionalFilterBtn) clearUnidadRegionalFilterBtn.addEventListener('click', clearFilter);
+    
+    if (loadDataBtn) {
+        loadDataBtn.addEventListener('click', async function() {
+            this.disabled = true;
+            await loadBaseData();
+            this.disabled = false;
+        });
+    }
+    
+    if (toggleLegendBtn) {
+        toggleLegendBtn.addEventListener('click', function() {
+            const legend = document.getElementById('legend');
+            if (legend) {
+                if (legend.style.display === 'block') {
+                    legend.style.display = 'none';
+                    this.textContent = 'Referencia de Diámetros';
+                } else {
+                    legend.style.display = 'block';
+                    this.textContent = 'Ocultar Referencia';
                 }
-            } catch (e) {
-                console.log(`Tabla ${table}: Error`);
             }
-        }
-        
-        showStatus('Disponibles: ' + availableTables.join(', '), 'success');
-        this.disabled = false;
-    });*/
-    
-    // Botón para cargar datos base
-    document.getElementById('loadDataBtn').addEventListener('click', async function() {
-        this.disabled = true;
-        await loadBaseData();
-        this.disabled = false;
-    });
-    
-    // Botón para mostrar/ocultar leyenda
-    document.getElementById('toggleLegendBtn').addEventListener('click', function() {
-        const legend = document.getElementById('legend');
-        if (legend.style.display === 'block') {
-            legend.style.display = 'none';
-            this.textContent = 'Mostrar Leyenda';
-        } else {
-            legend.style.display = 'block';
-            this.textContent = 'Ocultar Leyenda';
-        }
-    });
+        });
+    }
 }
 
-// Función para mostrar estado
 function showStatus(message, type) {
     const status = document.getElementById('status');
     if (status) {
         status.textContent = message;
         status.className = type;
         status.style.display = 'block';
-        
         if (type !== 'loading') {
             setTimeout(() => {
                 status.style.display = 'none';
@@ -274,41 +219,21 @@ function showStatus(message, type) {
     }
 }
 
-// Función para convertir WKT a GeoJSON
 function wktToGeoJSON(wkt) {
     try {
-        if (!wkt || typeof wkt !== 'string') {
-            console.warn('wktToGeoJSON: WKT no es string o está vacío');
-            return null;
-        }
-        
-        // Limpiar coordenadas Z
+        if (!wkt || typeof wkt !== 'string') return null;
         let cleanWkt = wkt.replace(' Z ', ' ');
         cleanWkt = cleanWkt.replace(/(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)/g, '$1 $2');
         cleanWkt = cleanWkt.replace(/(-\d+\.?\d*)\s+(-\d+\.?\d*)\s+(-\d+\.?\d*)/g, '$1 $2');
-        
         const wicket = new Wkt.Wkt();
         wicket.read(cleanWkt);
         return wicket.toJson();
-        
     } catch (error) {
         console.error('Error convirtiendo WKT:', error);
         return null;
     }
 }
 
-// Función para crear popup
-function createPopup(properties, tableName) {
-    let content = `<strong>Capa: ${tableName}</strong><br>`;
-    for (const [key, value] of Object.entries(properties)) {
-        if (value && key !== 'wkt_geom' && key !== 'geom' && key !== 'the_geom') {
-            content += `<strong>${key}:</strong> ${value}<br>`;
-        }
-    }
-    return content;
-}
-
-// Popups personalizados por capa
 function createMunicipioPopup(properties) {
     let content = `<strong>Municipio</strong><br>`;
     if (properties.fna) content += `<strong>Nombre:</strong> ${properties.fna}<br>`;
@@ -320,22 +245,37 @@ function createMunicipioPopup(properties) {
 function createSuministroPopup(properties) {
     const medidor = properties.medidor || '';
     const safeKey = medidor.toString().replace(/[^a-zA-Z0-9]/g, '_');
-    let content = `<strong>Suministro</strong><br>`;
-    if (properties.medidor)   content += `<strong>Medidor:</strong> ${properties.medidor}<br>`;
-    if (properties.Cliente)   content += `<strong>Cliente:</strong> ${properties.Cliente}<br>`;
-    if (properties.Nombre)    content += `<strong>Nombre:</strong> ${properties.Nombre}<br>`;
+    const ruta = properties.ruta;
+    const orden = properties.orden;
+    const tieneRuta = ruta && ruta !== null && ruta !== '';
+    const tieneOrden = orden && orden !== null && orden !== 0;
+    
+    let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
+    if (properties.medidor) content += `<strong>Num. Medidor:</strong> ${properties.medidor}<br>`;
+    if (properties.Cliente) content += `<strong>Cliente:</strong> ${properties.Cliente}<br>`;
+    if (properties.Nombre) content += `<strong>Nombre:</strong> ${properties.Nombre}<br>`;
     if (properties.Direccion) content += `<strong>Dirección:</strong> ${properties.Direccion}<br>`;
     content += `<strong>Estado:</strong> ${properties.estado || '-'}<br>`;
+    
+    if (tieneRuta && tieneOrden) {
+        const colorRuta = obtenerColorRuta(String(ruta));
+        content += `<strong>Ruta:</strong> <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span><br>`;
+        content += `<strong>Orden:</strong> <span style="color:#383838; font-weight:bold;">${orden}</span><br>`;
+    } else {
+        content += `<strong>Ruta:</strong> <span style="color:#ff9800;">No asignada</span><br>`;
+        content += `<strong>Orden:</strong> <span style="color:#ff9800;">No asignado</span><br>`;
+    }
+    
     content += `
-        <hr style="margin:6px 0; border-color:#eee;">
+        <hr style="margin:8px 0; border-color:#ddd;">
         <strong>Cambiar estado:</strong>
-        <select class="popup-estado-select" id="estado-select-${safeKey}">
-            <option value="Conectado" ${properties.estado === 'Conectado' ? 'selected' : ''}>Conectado</option>
-            <option value="Cortado"   ${properties.estado === 'Cortado'   ? 'selected' : ''}>Cortado</option>
-            <option value="Anomalia"  ${properties.estado === 'Anomalia'  ? 'selected' : ''}>Anomalia</option>
+        <select id="estado-select-${safeKey}" style="margin:5px 0; padding:5px; width:100%;">
+            <option value="Conectado" ${properties.estado === 'Conectado' ? 'selected' : ''}>🟢 Conectado</option>
+            <option value="Cortado" ${properties.estado === 'Cortado' ? 'selected' : ''}>🔴 Cortado</option>
+            <option value="Anomalia" ${properties.estado === 'Anomalia' ? 'selected' : ''}>🟡 Anomalia</option>
         </select>
-        <button class="popup-save-btn" onclick="updateEstado('${safeKey}', '${medidor}')">Guardar</button>
-        <div class="popup-save-msg" id="popup-msg-${safeKey}"></div>
+        <button class="popup-save-btn" onclick="updateEstado('${safeKey}', '${medidor}')" style="width:100%;">💾 Guardar Estado</button>
+        <div id="popup-msg-${safeKey}" style="margin-top:5px;"></div>
     `;
     return content;
 }
@@ -347,109 +287,72 @@ function createCallesPopup(properties) {
     return content;
 }
 
-function createLocalidadPopup(properties) {    let content = `<strong>Localidad</strong><br>`;
-    if (properties.nombre) content += `<strong>Nombre localidad:</strong> ${properties.nombre}<br>`;
+function createLocalidadPopup(properties) {
+    let content = `<strong>Área de Servicio</strong><br>`;
+    if (properties.nombre) content += `<strong>Nombre:</strong> ${properties.nombre}<br>`;
     if (properties.partido) content += `<strong>Partido:</strong> ${properties.partido}<br>`;
     if (properties.unidad_regional) content += `<strong>Unidad Regional:</strong> ${properties.unidad_regional}<br>`;
     if (properties.zona_fria) content += `<strong>Zona Fría:</strong> ${properties.zona_fria}<br>`;
     if (properties.num_fimm) content += `<strong>Núm. Localidad:</strong> ${properties.num_fimm}<br>`;
     if (properties.turno) content += `<strong>Turno:</strong> ${properties.turno}<br>`;
-    if (properties.producto) content +=  `<strong>Tipo Producto: </strong> ${properties.producto}<br>`;
-    if (properties.cant_conect) content +=  `<strong>Capacidad máxima: </strong> ${properties.cant_conect}<br>`;
-    if (properties.cant_tanques) content +=  `<strong>Cantidad tanques: </strong> ${properties.cant_tanques}<br>`;
+    if (properties.producto) content += `<strong>Tipo Producto:</strong> ${properties.producto}<br>`;
+    if (properties.cant_conect) content += `<strong>Capacidad máxima:</strong> ${properties.cant_conect}<br>`;
+    if (properties.cant_tanques) content += `<strong>Cantidad tanques:</strong> ${properties.cant_tanques}<br>`;
     return content;
 }
 
-// Función para obtener bounds de un grupo de capas
 function getLayerGroupBounds(layerGroup) {
     try {
         const layers = layerGroup.getLayers();
         if (layers.length === 0) return null;
-        
         let bounds = null;
-        
         layers.forEach(layer => {
             const layerBounds = layer.getBounds ? layer.getBounds() : null;
             if (layerBounds) {
-                if (bounds === null) {
-                    bounds = layerBounds;
-                } else {
-                    bounds.extend(layerBounds);
-                }
+                if (bounds === null) bounds = layerBounds;
+                else bounds.extend(layerBounds);
             }
         });
-        
         return bounds;
-        
     } catch (error) {
         console.error('Error obteniendo bounds del grupo:', error);
         return null;
     }
 }
 
-// Función para hacer zoom a una geometría
 function zoomToGeometry(geometryWKT) {
     try {
-        if (!geometryWKT) {
-            console.log('No hay geometría para hacer zoom');
-            return;
-        }
-        
-        console.log('Intentando hacer zoom a geometría');
+        if (!geometryWKT) return;
         const geometryGeoJSON = wktToGeoJSON(geometryWKT);
-        
-        if (!geometryGeoJSON) {
-            console.log('No se pudo convertir geometría a GeoJSON');
-            return;
-        }
-        
-        // Crear capa temporal para obtener bounds
+        if (!geometryGeoJSON) return;
         const tempLayer = L.geoJSON(geometryGeoJSON);
         const bounds = tempLayer.getBounds();
-        
         if (bounds && bounds.isValid()) {
-            console.log('Haciendo zoom a bounds:', bounds);
-            map.fitBounds(bounds, {
-                padding: [50, 50],
-                maxZoom: 15
-            });
-        } else {
-            console.log('Bounds no válidos');
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
         }
-        
     } catch (error) {
         console.error('Error haciendo zoom:', error);
     }
 }
 
-// Función para cargar datos de una tabla (sin filtro)
 async function loadTableData(tableName, options = {}) {
     try {
         const { limit } = options;
-        
         console.log(`Cargando ${tableName}`);
         showStatus(`Cargando ${tableName}...`, 'loading');
         
         let query = supabaseClient.from(tableName).select('*');
-        
-        // Aplicar límite
         const queryLimit = limit || 5000;
         query = query.limit(queryLimit);
         
         const { data, error } = await query;
-        
         if (error) throw error;
-        
         if (!data || data.length === 0) {
             console.log(`${tableName} - No hay datos`);
-            showStatus(`No se encontraron datos en ${tableName}`, 'warning');
             return [];
         }
-        
         console.log(`${tableName} - ${data.length} registros`);
-        
         return data;
-        
     } catch (error) {
         console.error(`Error cargando ${tableName}:`, error);
         showStatus(`Error al cargar ${tableName}: ${error.message}`, 'error');
@@ -457,7 +360,6 @@ async function loadTableData(tableName, options = {}) {
     }
 }
 
-// Función para obtener color según estado del suministro
 function getColorByEstado(estado) {
     if (!estado) return '#28a745';
     const e = estado.trim().toLowerCase();
@@ -466,70 +368,64 @@ function getColorByEstado(estado) {
     return '#28a745';
 }
 
-// Función para renderizar datos en una capa
+function obtenerColorRuta(ruta) {
+    let hash = 0;
+    const str = String(ruta);
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash = hash & hash;
+    }
+    const index = Math.abs(hash) % RUTA_COLORES.length;
+    return RUTA_COLORES[index];
+}
+
 function renderDataToLayer(tableName, data, style = null) {
     console.log(`Renderizando ${tableName} - ${data.length} elementos`);
-    
-    // Limpiar capa anterior
+    if (!layerGroups[tableName]) return 0;
     layerGroups[tableName].clearLayers();
     
     let featuresAdded = 0;
     
     data.forEach(item => {
         let geojson = null;
-        
-        // Obtener geometría
         const itemGeometry = item.wkt_geom || item.geom || item.the_geom;
         
         if (itemGeometry) {
-            const rawGeom = typeof itemGeometry === 'string' ? 
-                      wktToGeoJSON(itemGeometry) : itemGeometry;
-            
-            // Envolver en Feature GeoJSON con propiedades para que pointToLayer funcione
+            const rawGeom = typeof itemGeometry === 'string' ? wktToGeoJSON(itemGeometry) : itemGeometry;
             if (rawGeom) {
                 if (rawGeom.type === 'Feature') {
                     geojson = rawGeom;
                     if (!geojson.properties) geojson.properties = {};
                     Object.assign(geojson.properties, item);
                 } else {
-                    geojson = {
-                        type: 'Feature',
-                        geometry: rawGeom,
-                        properties: item
-                    };
+                    geojson = { type: 'Feature', geometry: rawGeom, properties: item };
                 }
             }
         }
         
         if (geojson) {
             try {
-                const layerStyle = style || styles[tableName] || {};
-
                 const layerOptions = {
-                    style: tableName === 'suministros' ? null : layerStyle,
+                    style: tableName === 'suministros' ? null : (style || styles[tableName] || {}),
                     onEachFeature: (feature, layer) => {
                         let popupContent;
-                        if (tableName === 'municipios') {
-                            popupContent = createMunicipioPopup(item);
-                        } else if (tableName === 'localidades') {
-                            popupContent = createLocalidadPopup(item);
-                        } else if (tableName === 'suministros') {
-                            popupContent = createSuministroPopup(item);
-                        } else if (tableName === 'calles') {
-                            popupContent = createCallesPopup(item);
-                        } else {
-                            popupContent = createPopup(item, tableName);
-                        }
+                        if (tableName === 'municipios') popupContent = createMunicipioPopup(item);
+                        else if (tableName === 'localidades') popupContent = createLocalidadPopup(item);
+                        else if (tableName === 'suministros') popupContent = createSuministroPopup(item);
+                        else if (tableName === 'calles') popupContent = createCallesPopup(item);
+                        else popupContent = `<strong>Capa: ${tableName}</strong><br>${JSON.stringify(item)}`;
                         layer.bindPopup(popupContent);
                     }
                 };
-
-                // Para capas de puntos usar CircleMarker
+                
                 if (tableName === 'suministros') {
                     layerOptions.pointToLayer = (feature, latlng) => {
-                        const estado = (feature.properties && feature.properties.estado) || item.estado;
-                        const color = getColorByEstado(estado);
-                        const borderColor = color === '#ffc107' ? '#cc9a00' : color === '#dc3545' ? '#a71d2a' : '#1a7a32';
+                        const ruta = item.ruta;
+                        const orden = item.orden;
+                        const tieneRuta = ruta && ruta !== null && ruta !== '';
+                        const tieneOrden = orden && orden !== null && orden !== 0;
+                        let color = (tieneRuta && tieneOrden) ? obtenerColorRuta(String(ruta)) : '#aaaaaa';
+                        const borderColor = color === '#aaaaaa' ? '#666666' : color;
                         return L.circleMarker(latlng, {
                             radius: 3,
                             fillColor: color,
@@ -540,9 +436,8 @@ function renderDataToLayer(tableName, data, style = null) {
                         });
                     };
                 }
-
-                const layer = L.geoJSON(geojson, layerOptions);
                 
+                const layer = L.geoJSON(geojson, layerOptions);
                 layerGroups[tableName].addLayer(layer);
                 featuresAdded++;
             } catch (e) {
@@ -552,17 +447,15 @@ function renderDataToLayer(tableName, data, style = null) {
     });
     
     console.log(`${tableName} - ${featuresAdded} elementos renderizados`);
-    
     return featuresAdded;
 }
 
-// Función para ajustar vista a un grupo de capas
 function fitViewToLayerGroup(tableName) {
     try {
+        if (!layerGroups[tableName]) return false;
         const bounds = getLayerGroupBounds(layerGroups[tableName]);
         if (bounds && bounds.isValid()) {
             map.fitBounds(bounds.pad(0.1));
-            console.log(`Vista ajustada a ${tableName}`);
             return true;
         }
         return false;
@@ -572,102 +465,58 @@ function fitViewToLayerGroup(tableName) {
     }
 }
 
-
-// Función para obtener color según diámetro
 function getColorByDiameter(diametro) {
     if (!diametro) return '#FFFFFF';
-    
     const diametroNum = Number(diametro);
-    
-    if (diametroNum === 50) return '#f3a120';    
-    if (diametroNum === 63) return '#0e2eea';    
-    if (diametroNum === 90) return '#df0c0c';    
-    if (diametroNum === 125) return '#15960b';    
-    if (diametroNum === 180) return '#da21cb';    
-    
-    return '#FFFFFF'; // 
+    if (diametroNum === 50) return '#f3a120';
+    if (diametroNum === 63) return '#0e2eea';
+    if (diametroNum === 90) return '#df0c0c';
+    if (diametroNum === 125) return '#15960b';
+    if (diametroNum === 180) return '#da21cb';
+    return '#FFFFFF';
 }
 
-// Función para obtener clase CSS según diámetro
 function getDiameterClass(diametro) {
     if (!diametro) return 'diameter-other';
-    
     const diametroNum = Number(diametro);
-    
     if (diametroNum === 50) return 'diameter-50';
     if (diametroNum === 63) return 'diameter-63';
     if (diametroNum === 90) return 'diameter-90';
     if (diametroNum === 125) return 'diameter-125';
     if (diametroNum === 180) return 'diameter-180';
-    
     return 'diameter-other';
 }
 
-// Función para renderizar red de gas con clasificación por diámetro
 function renderRedGasWithDiameterClassification(data) {
     console.log(`Renderizando red de gas con clasificación - ${data.length} elementos`);
-    
-    // Limpiar capa anterior
+    if (!layerGroups.red_de_gas) return 0;
     layerGroups.red_de_gas.clearLayers();
     
     let featuresAdded = 0;
-    
     data.forEach(item => {
         let geojson = null;
-        
-        // Obtener geometría
         const itemGeometry = item.wkt_geom || item.geom;
-        
         if (itemGeometry) {
-            geojson = typeof itemGeometry === 'string' ? 
-                      wktToGeoJSON(itemGeometry) : itemGeometry;
+            geojson = typeof itemGeometry === 'string' ? wktToGeoJSON(itemGeometry) : itemGeometry;
         }
-        
         if (geojson) {
             try {
                 const diametro = item.diametro || item.diametro_mm;
                 const color = getColorByDiameter(diametro);
-                
-                const layerStyle = {
-                    color: color,
-                    weight: 4, // 
-                    opacity: 0.8,
-                    className: getDiameterClass(diametro) // Agregar clase CSS
-                };
-                
+                const layerStyle = { color: color, weight: 4, opacity: 0.8, className: getDiameterClass(diametro) };
                 const layer = L.geoJSON(geojson, {
                     style: layerStyle,
                     onEachFeature: (feature, layer) => {
-                        // Popup mejorado con diámetro
                         let popupContent = `<strong>Red de Gas</strong><br>`;
-                        
-                        if (diametro) {
-                            popupContent += `<strong>Diámetro:</strong> Ø ${diametro} mm<br>`;
-                        }
-                        
-                        if (item.material) {
-                            popupContent += `<strong>Material:</strong> ${item.material}<br>`;
-                        }
-                        
-                        if (item.estado) {
-                            popupContent += `<strong>Estado:</strong> ${item.estado}<br>`;
-                        }
-                        
-                        if (item.localidad) {
-                            popupContent += `<strong>Localidad:</strong> ${item.localidad}<br>`;
-                        }
-                        
-                        if (item.name || item.Name) {
-                            popupContent += `<strong>Nombre:</strong> ${item.name || item.Name}<br>`;
-                        }
-                        
+                        if (diametro) popupContent += `<strong>Diámetro:</strong> Ø ${diametro} mm<br>`;
+                        if (item.material) popupContent += `<strong>Material:</strong> ${item.material}<br>`;
+                        if (item.estado) popupContent += `<strong>Estado:</strong> ${item.estado}<br>`;
+                        if (item.localidad) popupContent += `<strong>Localidad:</strong> ${item.localidad}<br>`;
                         layer.bindPopup(popupContent);
                     }
                 });
-                
                 layerGroups.red_de_gas.addLayer(layer);
                 featuresAdded++;
-                
             } catch (e) {
                 console.error('Error agregando geometría de red de gas:', e);
             }
@@ -675,459 +524,154 @@ function renderRedGasWithDiameterClassification(data) {
     });
     
     console.log(`Red de gas: ${featuresAdded} elementos renderizados`);
-    
-    // Mostrar botón de leyenda si hay elementos
     const toggleBtn = document.getElementById('toggleLegendBtn');
-    if (featuresAdded > 0) {
-        toggleBtn.style.display = 'block';
-    }
-    
+    if (toggleBtn && featuresAdded > 0) toggleBtn.style.display = 'block';
     return featuresAdded;
 }
 
-// ===============================
-// FUNCIONES POSTGIS - FILTRADO
-// ===============================
+async function loadBaseData() {
+    try {
+        console.log('Iniciando carga de datos base');
+        
+        municipiosData = await loadTableData('municipios', { limit: 200 });
+        if (municipiosData.length > 0) {
+            renderDataToLayer('municipios', municipiosData);
+            if (!map.hasLayer(layerGroups.municipios)) layerGroups.municipios.addTo(map);
+            const cb = document.getElementById('layer-municipios');
+            if (cb) { cb.checked = true; cb.disabled = false; }
+        }
+        
+        localidadesData = await loadTableData('localidades', { limit: 500 });
+        if (localidadesData.length > 0) {
+            renderDataToLayer('localidades', localidadesData);
+            populateLocalidadSelect();
+            enableLocalidadFilter();
+            if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
+            const cb = document.getElementById('layer-localidades');
+            if (cb) { cb.checked = true; cb.disabled = false; }
+            populateUnidadRegionalSelect();
+        }
+        
+        suministrosData = await loadTableData('suministros', { limit: 10000 });
+        console.log('📊 Suministros cargados en cache:', suministrosData.length);
+        if (suministrosData.length > 0) {
+            console.log('📊 Ejemplo de suministro con ruta/orden:', suministrosData.slice(0, 3).map(s => ({
+                medidor: s.medidor, ruta: s.ruta, orden: s.orden
+            })));
+            renderDataToLayer('suministros', suministrosData);
+            const cb = document.getElementById('layer-suministros');
+            if (cb) { cb.disabled = false; cb.checked = false; }
+            const label = document.getElementById('label-suministros');
+            if (label) {
+                label.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros"> Suministros (${suministrosData.length})`;
+                const newCb = document.getElementById('layer-suministros');
+                if (newCb) newCb.addEventListener('change', handleCheckboxChange);
+            }
+        }
+        
+        showStatus('Datos base cargados. Seleccione un filtro para ver más información.', 'success');
+    } catch (error) {
+        console.error('Error cargando datos base:', error);
+    }
+}
 
-// Función para cargar datos filtrados con PostGIS
+function populateUnidadRegionalSelect() {
+    const select = document.getElementById('selectUnidadRegional');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Seleccione unidad regional --</option>';
+    const unidades = [...new Set(localidadesData.map(l => l.unidad_regional).filter(ur => ur))].sort();
+    unidades.forEach(unidad => {
+        const option = document.createElement('option');
+        option.value = unidad;
+        option.textContent = unidad;
+        select.appendChild(option);
+    });
+    select.disabled = false;
+    const applyBtn = document.getElementById('applyUnidadRegionalFilter');
+    const clearBtn = document.getElementById('clearUnidadRegionalFilter');
+    if (applyBtn) applyBtn.disabled = false;
+    if (clearBtn) clearBtn.disabled = false;
+}
+
+function populateLocalidadSelect() {
+    const select = document.getElementById('selectLocalidad');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Seleccione un Área de Servicio --</option>';
+    localidadesData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    localidadesData.forEach(item => {
+        if (!item.nombre) return;
+        const option = document.createElement('option');
+        option.value = item.nombre;
+        option.textContent = item.nombre;
+        select.appendChild(option);
+    });
+}
+
+function enableLocalidadFilter() {
+    const select = document.getElementById('selectLocalidad');
+    const applyBtn = document.getElementById('applyLocalidadFilter');
+    const clearBtn = document.getElementById('clearLocalidadFilter');
+    if (select) select.disabled = false;
+    if (applyBtn) applyBtn.disabled = false;
+    if (clearBtn) clearBtn.disabled = false;
+}
+
+function enableDependentLayers(filterName) {
+    const redGasLabel = document.getElementById('label-red_de_gas');
+    const callesLabel = document.getElementById('label-calles');
+    const suministrosLabel = document.getElementById('label-suministros');
+    
+    if (redGasLabel) {
+        redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" checked> Red de Gas (${filterName})`;
+        const cb = document.getElementById('layer-red_de_gas');
+        if (cb) cb.addEventListener('change', handleCheckboxChange);
+    }
+    if (callesLabel) {
+        callesLabel.innerHTML = `<input type="checkbox" id="layer-calles" data-table="calles" checked> Calles (${filterName})`;
+        const cb = document.getElementById('layer-calles');
+        if (cb) cb.addEventListener('change', handleCheckboxChange);
+    }
+    if (suministrosLabel) {
+        suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" checked> Suministros (${filterName})`;
+        const cb = document.getElementById('layer-suministros');
+        if (cb) cb.addEventListener('change', handleCheckboxChange);
+    }
+    
+    setTimeout(() => {
+        if (layerGroups.red_de_gas && !map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
+        if (layerGroups.calles && !map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
+        if (layerGroups.suministros && !map.hasLayer(layerGroups.suministros)) layerGroups.suministros.addTo(map);
+    }, 100);
+}
+
 async function loadFilteredPostGIS(tableName, filterType, filterValue) {
     try {
         console.log(`Cargando ${tableName} con PostGIS para ${filterType}: ${filterValue}`);
+        let functionName, params = {};
         
-        let functionName;
-        let params = {};
-        
-        if (filterType === 'municipio') {
-            if (tableName === 'calles') {
-                functionName = 'get_streets_by_municipio';
-            } else if (tableName === 'red_de_gas') {
-                functionName = 'get_gas_network_by_municipio';
-            } else if (tableName === 'suministros') {
-                functionName = 'get_suministros_by_municipio';
-            }
-            params = { municipio_name: filterValue };
-            
-        } else if (filterType === 'localidad') {
-            if (tableName === 'calles') {
-                functionName = 'get_streets_by_localidad';
-            } else if (tableName === 'red_de_gas') {
-                functionName = 'get_gas_network_by_localidad';
-            } else if (tableName === 'suministros') {
-                functionName = 'get_suministros_by_localidad';
-            }
+        if (filterType === 'localidad') {
+            if (tableName === 'calles') functionName = 'get_streets_by_localidad';
+            else if (tableName === 'red_de_gas') functionName = 'get_gas_network_by_localidad';
+            else return [];
             params = { localidad_name: filterValue };
-            
         } else {
-            console.warn(`Tipo de filtro no soportado: ${filterType}`);
             return [];
         }
         
-        if (!functionName) {
-            console.warn(`No hay función PostGIS para ${tableName} con filtro ${filterType}`);
-            return [];
-        }
+        if (!functionName) return [];
         
-        console.log(`Ejecutando RPC: ${functionName}`, params);
-        
-        const { data, error } = await supabaseClient
-            .rpc(functionName, params)
-            .range(0, 9999);
-        
+        const { data, error } = await supabaseClient.rpc(functionName, params).range(0, 9999);
         if (error) {
             console.error(`Error en RPC ${functionName}:`, error);
-            showStatus(`Error: ${error.message}`, 'error');
             return [];
         }
-        
-        console.log(`${tableName}: ${data?.length || 0} elementos encontrados`);
         return data || [];
-        
     } catch (error) {
         console.error(`Error cargando ${tableName}:`, error);
         return [];
     }
 }
 
-// ===============================
-// CARGA DE DATOS BASE
-// ===============================
-
-async function loadBaseData(){
-    try {
-        console.log('Iniciando carga de datos base');
-        
-        // Cargar municipios
-        municipiosData = await loadTableData('municipios', { limit: 200 });
-        console.log('Municipios cargados:', municipiosData.length);
-        
-        if (municipiosData.length > 0) {
-            // Renderizar municipios inicialmente
-            renderDataToLayer('municipios', municipiosData);
-            //populateMunicipioSelect();
-            //enableMunicipioFilter();
-            //console.log('Filtro municipio habilitado');
-             if (!map.hasLayer(layerGroups.municipios)) {
-            layerGroups.municipios.addTo(map);
-            }
-        // ==== ACTIVAR Y MARCAR CHECKBOX DE MUNICIPIOS ====
-            const municipiosCheckbox = document.getElementById('layer-municipios');
-            if (municipiosCheckbox) {
-                municipiosCheckbox.checked = true;
-                municipiosCheckbox.disabled = false;
-            }
-
-        }
-        
-        // Cargar localidades
-        localidadesData = await loadTableData('localidades', { limit: 500 });
-        console.log('Localidades cargadas:', localidadesData.length);
-        
-        if (localidadesData.length > 0) {
-            // Renderizar localidades inicialmente
-            renderDataToLayer('localidades', localidadesData);
-            populateLocalidadSelect();
-            enableLocalidadFilter();
-            console.log('Filtro localidad habilitado');
-            if (!map.hasLayer(layerGroups.localidades)) {
-            layerGroups.localidades.addTo(map);
-            }
-         // ==== ACTIVAR Y MARCAR CHECKBOX DE LOCALIDADES ====
-            const localidadesCheckbox = document.getElementById('layer-localidades');
-            if (localidadesCheckbox) {
-                localidadesCheckbox.checked = true;
-                localidadesCheckbox.disabled = false;
-            }
-            populateUnidadRegionalSelect();
-            console.log('Filtro unidad regional habilitado');
-
-        // NO cargar calles y red de gas inicialmente - se cargarán con PostGIS
-        console.log('Calles y red de gas se cargarán dinámicamente con PostGIS');
-
-        // Cargar suministros (capa de puntos, habilitada pero apagada por defecto)
-        showStatus('Cargando suministros...', 'loading');
-        suministrosData = await loadTableData('suministros', { limit: 10000 });
-        console.log('Suministros cargados:', suministrosData.length);
-
-        if (suministrosData.length > 0) {
-            renderDataToLayer('suministros', suministrosData);
-            // No agregar al mapa todavía - el usuario lo activa con el checkbox
-            const suministrosCheckbox = document.getElementById('layer-suministros');
-            if (suministrosCheckbox) {
-                suministrosCheckbox.disabled = false;
-                suministrosCheckbox.checked = false;
-            }
-            // Actualizar etiqueta para indicar que está disponible
-            const suministrosLabel = document.getElementById('label-suministros');
-            if (suministrosLabel) {
-                suministrosLabel.innerHTML = `
-                    <input type="checkbox" id="layer-suministros" data-table="suministros">
-                    Suministros (${suministrosData.length})
-                `;
-                const cb = document.getElementById('layer-suministros');
-                if (cb) cb.addEventListener('change', handleCheckboxChange);
-            }
-        }
-        
-        console.log('Datos base cargados completamente');
-        showStatus('Datos base cargados. Seleccione un filtro para ver calles y red de gas.', 'success');
-        }
-}catch (error) {
-    console.error('Error cargando datos base:', error);
-    }
-}
-
-// ===============================
-// FUNCIONES PARA DROPDOWNS
-// ===============================
-
-// Poblar select de municipios
-/*function populateMunicipioSelect() {
-    const select = document.getElementById('selectMunicipio');
-    if (!select) return;
-    
-    select.innerHTML = '<option value="">-- Seleccione un municipio --</option>';
-    
-    // Usar 'nam' que es el campo real en la base de datos
-    municipiosData.sort((a, b) => {
-        const nameA = (a.nam || '').toLowerCase();
-        const nameB = (b.nam || '').toLowerCase();
-        return nameA.localeCompare(nameB);
-    });
-    
-    municipiosData.forEach((item) => {
-        if (!item.nam) return;
-        
-        const nombre = item.nam;
-        const option = document.createElement('option');
-        option.value = nombre;
-        option.textContent = nombre;
-        option.dataset.id = item.id || item.fid;
-        select.appendChild(option);
-    });
-    
-    const debugInfo = document.getElementById('municipioDebug');
-    if (debugInfo) {
-        debugInfo.textContent = `${municipiosData.length} municipios cargados`;
-    }
-}*/
-
-function populateUnidadRegionalSelect(){
-    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
-    if (selectUnidadRegional)
-    selectUnidadRegional.innerHTML = '<option value="">-- Seleccione unidad regional --</option>';
-    
-    // Extraer valores únicos del campo unidad_regional
-    const unidadesRegionales = [...new Set(
-        localidadesData
-            .map(l => l.unidad_regional)
-            .filter(ur => ur) // Filtrar valores vacíos o null
-    )].sort();
-    
-    unidadesRegionales.forEach(unidad => {
-        const option = document.createElement('option');
-        option.value = unidad;
-        option.textContent = unidad;
-        selectUnidadRegional.appendChild(option);
-    });
-    
-    selectUnidadRegional.disabled = false;
-    document.getElementById('applyUnidadRegionalFilter').disabled = false;
-    document.getElementById('clearUnidadRegionalFilter').disabled = false;
-}
-
-// Poblar select de localidades
-function populateLocalidadSelect() {
-    const select = document.getElementById('selectLocalidad');
-    if (!select) return;
-    
-    select.innerHTML = '<option value="">-- Seleccione un Área de Servicio --</option>';
-    
-    // Usar 'nombre' que es el campo real en localidades
-    localidadesData.sort((a, b) => {
-        const nameA = (a.nombre || '').toLowerCase();
-        const nameB = (b.nombre || '').toLowerCase();
-        return nameA.localeCompare(nameB);
-    });
-    
-    localidadesData.forEach((item) => {
-        if (!item.nombre) return;
-        
-        const nombre = item.nombre;
-        const option = document.createElement('option');
-        option.value = nombre;
-        option.textContent = nombre;
-        option.dataset.id = item.id || item.fid;
-        select.appendChild(option);
-    });
-    
-    const debugInfo = document.getElementById('localidadDebug');
-    if (debugInfo) {
-        debugInfo.textContent = `${localidadesData.length} localidades cargadas`;
-    }
-}
-
-// Habilitar filtro de municipio
-/*function enableMunicipioFilter() {
-    const select = document.getElementById('selectMunicipio');
-    const applyBtn = document.getElementById('applyMunicipioFilter');
-    const clearBtn = document.getElementById('clearMunicipioFilter');
-    
-    if (select) select.disabled = false;
-    if (applyBtn) applyBtn.disabled = false;
-    if (clearBtn) clearBtn.disabled = false;
-}*/
-
-// Habilitar filtro de localidad
-function enableLocalidadFilter() {
-    const select = document.getElementById('selectLocalidad');
-    const applyBtn = document.getElementById('applyLocalidadFilter');
-    const clearBtn = document.getElementById('clearLocalidadFilter');
-    
-    if (select) select.disabled = false;
-    if (applyBtn) applyBtn.disabled = false;
-    if (clearBtn) clearBtn.disabled = false;
-}
-
-// Habilitar capas dependientes
-function enableDependentLayers(filterName) {
-    console.log('Habilitando capas dependientes para:', filterName);
-    
-    const redGasLabel = document.getElementById('label-red_de_gas');
-    const callesLabel = document.getElementById('label-calles');
-    const suministrosLabel = document.getElementById('label-suministros');
-    
-    if (redGasLabel) {
-        redGasLabel.innerHTML = `
-            <input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" checked>
-            Red de Gas (${filterName})
-        `;
-        
-        // Re-asignar event listener
-        const newRedGasCheckbox = document.getElementById('layer-red_de_gas');
-        if (newRedGasCheckbox) {
-            newRedGasCheckbox.addEventListener('change', handleCheckboxChange);
-        }
-    }
-    
-    if (callesLabel) {
-        callesLabel.innerHTML = `
-            <input type="checkbox" id="layer-calles" data-table="calles" checked>
-            Calles (${filterName})
-        `;
-        
-        // Re-asignar event listener
-        const newCallesCheckbox = document.getElementById('layer-calles');
-        if (newCallesCheckbox) {
-            newCallesCheckbox.addEventListener('change', handleCheckboxChange);
-        }
-    }
-
-    if (suministrosLabel) {
-        suministrosLabel.innerHTML = `
-            <input type="checkbox" id="layer-suministros" data-table="suministros" checked>
-            Suministros (${filterName})
-        `;
-        
-        const newSuministrosCheckbox = document.getElementById('layer-suministros');
-        if (newSuministrosCheckbox) {
-            newSuministrosCheckbox.addEventListener('change', handleCheckboxChange);
-        }
-    }
-    
-    // Asegurar que las capas estén en el mapa
-    setTimeout(() => {
-        if (!map.hasLayer(layerGroups.red_de_gas)) {
-            layerGroups.red_de_gas.addTo(map);
-        }
-        if (!map.hasLayer(layerGroups.calles)) {
-            layerGroups.calles.addTo(map);
-        }
-        if (!map.hasLayer(layerGroups.suministros)) {
-            layerGroups.suministros.addTo(map);
-        }
-    }, 100);
-}
-
-// ===============================
-// APLICAR FILTROS
-// ===============================
-
-// Aplicar filtro por municipio CON POSTGIS
-/*async function applyMunicipioFilter() {
-    console.log('Aplicando filtro municipio con PostGIS...');
-    
-    const select = document.getElementById('selectMunicipio');
-    if (!select) return;
-    
-    const municipioNombre = select.value;
-    
-    if (!municipioNombre) {
-        showStatus('Seleccione un municipio', 'error');
-        return;
-    }
-    
-    // Buscar municipio
-    const municipio = municipiosData.find(m => m.nam === municipioNombre);
-    
-    if (!municipio) {
-        showStatus('Municipio no encontrado', 'error');
-        return;
-    }
-    
-    currentFilter = {
-        type: 'municipio',
-        name: municipioNombre,
-        data: municipio,
-        geometry: municipio.geom
-    };
-    
-    showStatus(`Filtrando ${municipioNombre} con PostGIS...`, 'loading');
-    
-    // Resaltar filtro activo
-    document.querySelectorAll('.filter-section').forEach(section => {
-        section.classList.remove('active-filter');
-    });
-    select.parentElement.classList.add('active-filter');
-    
-    // 1. Habilitar capas dependientes
-    enableDependentLayers(municipioNombre);
-    
-    // 2. Activar checkboxes
-    document.getElementById('layer-municipios').checked = true;
-    document.getElementById('layer-localidades').checked = true;
-    document.getElementById('layer-red_de_gas').checked = true;
-    document.getElementById('layer-calles').checked = true;
-    
-    // 3. Renderizar solo el municipio seleccionado
-    layerGroups.municipios.clearLayers();
-    renderDataToLayer('municipios', [municipio], filteredStyle.municipios);
-    
-    // ==== AGREGAR ESTAS 2 LÍNEAS DESPUÉS ====
-    if (!map.hasLayer(layerGroups.municipios)) {
-    layerGroups.municipios.addTo(map);
-    }
-    // 4. Filtrar localidades del municipio (en cliente por ahora)
-    const localidadesEnMunicipio = localidadesData.filter(localidad => {
-        return localidad.partido === municipioNombre || 
-               localidad.partido_ig === municipioNombre;
-    });
-    
-    layerGroups.localidades.clearLayers();
-    if (localidadesEnMunicipio.length > 0) {
-        renderDataToLayer('localidades', localidadesEnMunicipio);
-    }
-    
-    // 5. Hacer zoom al municipio
-    if (municipio.geom) {
-        zoomToGeometry(municipio.geom);
-    }
-    
-    // 6. CARGAR Y RENDERIZAR CALLES CON POSTGIS
-    console.log('Cargando calles con PostGIS...');
-    const callesFiltradas = await loadFilteredPostGIS('calles', 'municipio', municipioNombre);
-    layerGroups.calles.clearLayers();
-    if (callesFiltradas.length > 0) {
-        renderDataToLayer('calles', callesFiltradas);
-        if (!map.hasLayer(layerGroups.calles)) {
-            layerGroups.calles.addTo(map);
-        }
-        console.log(`✓ ${callesFiltradas.length} calles cargadas`);
-    } else {
-        console.log('✗ No se encontraron calles');
-        showStatus(`No se encontraron calles en ${municipioNombre}`, 'warning');
-    }
-    
-    // 7. CARGAR Y RENDERIZAR RED DE GAS CON POSTGIS
-    console.log('Cargando red de gas con PostGIS...');
-    const redGasFiltrada = await loadFilteredPostGIS('red_de_gas', 'municipio', municipioNombre);
-    layerGroups.red_de_gas.clearLayers();
-    if (redGasFiltrada.length > 0) {
-        // Usar estilo clasificado por diámetro
-        renderRedGasWithDiameterClassification(redGasFiltrada);
-        if (!map.hasLayer(layerGroups.red_de_gas)) {
-            layerGroups.red_de_gas.addTo(map);
-        }
-        console.log(`✓ ${redGasFiltrada.length} elementos de red de gas cargados`);
-    } else {
-        console.log('✗ No se encontró red de gas');
-        showStatus(`No se encontró red de gas en ${municipioNombre}`, 'warning');
-    }
-    
-    // Ajustar vista si es necesario
-    setTimeout(() => {
-        fitViewToLayerGroup('municipios');
-    }, 500);
-    
-    //updateElementList();
-    
-    // Mostrar resumen
-    const summary = `${municipioNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas`;
-    showStatus(summary, 'success');
-    
-    console.log('Filtro municipio aplicado completamente con PostGIS');
-}*/
-
-// Aplicar filtro por localidad CON POSTGIS
 async function applyLocalidadFilter() {
     const select = document.getElementById('selectLocalidad');
     if (!select) return;
@@ -1136,56 +680,50 @@ async function applyLocalidadFilter() {
         showStatus('Seleccione una localidad', 'error');
         return;
     }
-    // Resaltar filtro activo
     document.querySelectorAll('.filter-section').forEach(s => s.classList.remove('active-filter'));
-    select.parentElement.classList.add('active-filter');
-
+    if (select.parentElement) select.parentElement.classList.add('active-filter');
     await aplicarFiltroLocalidad(localidadNombre);
 }
 
 async function aplicarFiltroLocalidad(localidadNombre) {
-    console.log('Aplicando filtro localidad con PostGIS...');
-
+    console.log('Aplicando filtro localidad...');
+    
     const localidad = localidadesData.find(l => l.nombre === localidadNombre);
     if (!localidad) {
         showStatus('Localidad no encontrada', 'error');
         return;
     }
-
+    
+    const numFimm = localidad.num_fimm;
+    console.log(`Localidad: ${localidadNombre}, num_fimm: ${numFimm}`);
+    
     currentFilter = {
         type: 'localidad',
         name: localidadNombre,
         data: localidad,
         geometry: localidad.geom,
-        num_fimm: localidad.num_fimm ? [localidad.num_fimm] : []
+        num_fimm: [numFimm]
     };
-
+    
     showStatus(`Filtrando ${localidadNombre}...`, 'loading');
-
-    // 1. Habilitar capas dependientes
     enableDependentLayers(localidadNombre);
-
-    // 2. Renderizar solo la localidad seleccionada
+    
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
     if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
-    const localidadesCheckbox = document.getElementById('layer-localidades');
-    if (localidadesCheckbox) localidadesCheckbox.checked = true;
-
-    // 3. Municipio padre: cargar pero apagado
+    
     const municipioPadre = municipiosData.find(m => m.nam === localidad.partido || m.nam === localidad.partido_ig);
     layerGroups.municipios.clearLayers();
     if (municipioPadre) {
         renderDataToLayer('municipios', [municipioPadre], filteredStyle.municipios);
         if (map.hasLayer(layerGroups.municipios)) map.removeLayer(layerGroups.municipios);
-        const municipiosCheckbox = document.getElementById('layer-municipios');
-        if (municipiosCheckbox) { municipiosCheckbox.checked = false; municipiosCheckbox.disabled = false; }
+        const cb = document.getElementById('layer-municipios');
+        if (cb) { cb.checked = false; cb.disabled = false; }
     }
-
-    // 4. Zoom a la localidad
+    
     if (localidad.geom) zoomToGeometry(localidad.geom);
-
-    // 5. Calles
+    
+    // Cargar calles
     const callesFiltradas = await loadFilteredPostGIS('calles', 'localidad', localidadNombre);
     layerGroups.calles.clearLayers();
     if (callesFiltradas.length > 0) {
@@ -1193,8 +731,8 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         if (!map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
         console.log(`✓ ${callesFiltradas.length} calles cargadas`);
     }
-
-    // 6. Red de gas
+    
+    // Cargar red de gas
     const redGasFiltrada = await loadFilteredPostGIS('red_de_gas', 'localidad', localidadNombre);
     layerGroups.red_de_gas.clearLayers();
     if (redGasFiltrada.length > 0) {
@@ -1202,21 +740,30 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         if (!map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
         console.log(`✓ ${redGasFiltrada.length} red de gas cargada`);
     }
-
-    // 7. Suministros
-    const suministrosFiltrados = await loadFilteredPostGIS('suministros', 'localidad', localidadNombre);
-    layerGroups.suministros.clearLayers();
+    
+    // Cargar suministros filtrando por num_fimm desde el cache
+    console.log(`Filtrando suministros por Localidad = ${numFimm}`);
+    const suministrosFiltrados = suministrosData.filter(s => s.Localidad === numFimm);
+    console.log(`📊 Suministros encontrados en filtro: ${suministrosFiltrados.length}`);
+    
     if (suministrosFiltrados.length > 0) {
+        console.log('📊 Muestra de suministros filtrados (primeros 3):', suministrosFiltrados.slice(0, 3).map(s => ({
+            medidor: s.medidor, ruta: s.ruta, orden: s.orden, Localidad: s.Localidad
+        })));
+        
         renderDataToLayer('suministros', suministrosFiltrados);
         if (!map.hasLayer(layerGroups.suministros)) layerGroups.suministros.addTo(map);
-        console.log(`✓ ${suministrosFiltrados.length} suministros cargados`);
+        
+        inicializarModuloRuteo(suministrosFiltrados, localidadNombre);
+    } else {
+        console.log('⚠️ No se encontraron suministros para esta localidad');
+        limpiarModuloRuteo();
     }
-
+    
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
-
+    
     const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros`;
     showStatus(summary, 'success');
-    console.log('Filtro localidad aplicado completamente');
 }
 
 async function applyUnidadRegionalFilter() {
@@ -1231,20 +778,17 @@ async function applyUnidadRegionalFilter() {
     console.log('Aplicando filtro por unidad regional:', unidadRegional);
     showStatus(`Filtrando por unidad regional: ${unidadRegional}...`, 'loading');
     
-    // Resaltar sección activa
     document.querySelectorAll('.filter-section').forEach(section => {
         section.classList.remove('active-filter');
     });
     selectUnidadRegional.closest('.filter-section').classList.add('active-filter');
     
-    // Guardar filtro actual
     currentFilter = {
         type: 'unidad_regional',
         name: unidadRegional,
         num_fimm: []
     };
     
-    // 1. Filtrar localidades por unidad regional
     const localidadesFiltradas = localidadesData.filter(l => l.unidad_regional === unidadRegional);
     
     if (localidadesFiltradas.length === 0) {
@@ -1255,19 +799,15 @@ async function applyUnidadRegionalFilter() {
     console.log(`Localidades encontradas: ${localidadesFiltradas.length}`);
     currentFilter.num_fimm = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
     
-    // 2. Limpiar y renderizar localidades filtradas
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', localidadesFiltradas, filteredStyle.localidades);
-    if (!map.hasLayer(layerGroups.localidades)) {
-        layerGroups.localidades.addTo(map);
-    }
+    if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
     const localidadesCheckbox = document.getElementById('layer-localidades');
     if (localidadesCheckbox) {
         localidadesCheckbox.checked = true;
         localidadesCheckbox.disabled = false;
     }
     
-    // 3. Municipios: cargar pero APAGAR
     const municipiosUnicos = [...new Set(localidadesFiltradas.map(l => l.municipio))];
     const municipiosFiltrados = municipiosData.filter(m => municipiosUnicos.includes(m.municipio));
     layerGroups.municipios.clearLayers();
@@ -1278,14 +818,10 @@ async function applyUnidadRegionalFilter() {
         if (municipiosCheckbox) municipiosCheckbox.checked = false;
     }
     
-    // 4. Ajustar vista
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
-    
-    // 5. Habilitar labels de capas dependientes pero dejarlas APAGADAS
     habilitarCapasDependientesApagadas(unidadRegional);
-
-    // 6. Cargar calles (en memoria, apagada)
-    console.log('Cargando calles...');
+    
+    // Cargar calles
     const callesUR = await loadFilteredPostGIS('calles', 'localidad', unidadRegional);
     layerGroups.calles.clearLayers();
     if (callesUR.length > 0) {
@@ -1293,445 +829,271 @@ async function applyUnidadRegionalFilter() {
         if (map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
         console.log(`✓ ${callesUR.length} calles cargadas (apagadas)`);
     }
-
-    // 7. Cargar red de gas (en memoria, apagada)
-    console.log('Cargando red de gas...');
+    
+    // Cargar red de gas
     const redGasUR = await loadFilteredPostGIS('red_de_gas', 'localidad', unidadRegional);
     layerGroups.red_de_gas.clearLayers();
     if (redGasUR.length > 0) {
         renderRedGasWithDiameterClassification(redGasUR);
         if (map.hasLayer(layerGroups.red_de_gas)) map.removeLayer(layerGroups.red_de_gas);
-        // Ocultar botón de leyenda (capa apagada)
         document.getElementById('toggleLegendBtn').style.display = 'none';
         document.getElementById('legend').style.display = 'none';
         console.log(`✓ ${redGasUR.length} red de gas cargada (apagada)`);
     }
-
-    // 8. Cargar suministros (en memoria, apagada)
-    console.log('Cargando suministros...');
-    const suministrosUR = await loadFilteredPostGIS('suministros', 'localidad', unidadRegional);
-    layerGroups.suministros.clearLayers();
+    
+    // Cargar suministros filtrados por las localidades
+    const numFimms = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
+    const suministrosUR = suministrosData.filter(s => numFimms.includes(s.Localidad));
+    console.log(`📊 Suministros encontrados: ${suministrosUR.length}`);
+    
     if (suministrosUR.length > 0) {
         renderDataToLayer('suministros', suministrosUR);
         if (map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
-        console.log(`✓ ${suministrosUR.length} suministros cargados (apagados)`);
+        inicializarModuloRuteo(suministrosUR, unidadRegional);
     }
-
-    // 9. Mostrar lista de localidades en sidebar
-    mostrarListaLocalidadesUR(localidadesFiltradas);
     
+    mostrarListaLocalidadesUR(localidadesFiltradas);
     showStatus(`${localidadesFiltradas.length} localidades en ${unidadRegional}`, 'success');
-    console.log('Filtro por unidad regional aplicado');
 }
 
-// ===============================
-// LIMPIAR FILTRO
-// ===============================
-
-// Habilitar capas dependientes con checkboxes DESMARCADOS (apagadas)
 function habilitarCapasDependientesApagadas(filterName) {
     ['red_de_gas', 'calles', 'suministros'].forEach(capa => {
         const label = document.getElementById(`label-${capa}`);
         const nombres = { red_de_gas: 'Red de Gas', calles: 'Calles', suministros: 'Suministros' };
         if (label) {
-            label.innerHTML = `
-                <input type="checkbox" id="layer-${capa}" data-table="${capa}">
-                ${nombres[capa]} (${filterName})
-            `;
+            label.innerHTML = `<input type="checkbox" id="layer-${capa}" data-table="${capa}"> ${nombres[capa]} (${filterName})`;
             const cb = document.getElementById(`layer-${capa}`);
             if (cb) cb.addEventListener('change', handleCheckboxChange);
         }
     });
 }
 
-// Mostrar lista de localidades de la unidad regional en el sidebar
 function mostrarListaLocalidadesUR(localidades) {
     const container = document.getElementById('localidadesURContainer');
-    const list      = document.getElementById('localidadesURList');
+    const list = document.getElementById('localidadesURList');
     if (!container || !list) return;
-
     list.innerHTML = '';
     localidades.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).forEach(loc => {
         const item = document.createElement('div');
         item.className = 'localidad-ur-item';
         item.textContent = loc.nombre || `Localidad ${loc.num_fimm}`;
         item.addEventListener('click', async () => {
-            // Actualizar el select de área de servicio
             const selectLocalidad = document.getElementById('selectLocalidad');
             if (selectLocalidad) selectLocalidad.value = loc.nombre;
-            // Aplicar el filtro completo de localidad
             await aplicarFiltroLocalidad(loc.nombre);
         });
         list.appendChild(item);
     });
-
     container.style.display = 'block';
 }
 
-// Limpiar filtro - Restaurar estado inicial
 function clearFilter() {
     console.log('Limpiando filtro');
     
     currentFilter = null;
     
-    // Limpiar selects
-    //const selectMunicipio = document.getElementById('selectMunicipio');
     const selectLocalidad = document.getElementById('selectLocalidad');
     const selectUnidadRegional = document.getElementById('selectUnidadRegional');
     
-    //if (selectMunicipio) selectMunicipio.value = '';
     if (selectLocalidad) selectLocalidad.value = '';
     if (selectUnidadRegional) selectUnidadRegional.value = '';
     
-    // Remover resaltado
     document.querySelectorAll('.filter-section').forEach(section => {
         section.classList.remove('active-filter');
     });
     
-    // Restaurar texto original de las etiquetas
     const redGasLabel = document.getElementById('label-red_de_gas');
     const callesLabel = document.getElementById('label-calles');
     const suministrosLabel = document.getElementById('label-suministros');
     
     if (redGasLabel) {
-        redGasLabel.innerHTML = `
-            <input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" disabled>
-            Red de Gas (requiere filtro)
-        `;
+        redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" disabled> Red de Gas (requiere filtro)`;
     }
-    
     if (callesLabel) {
-        callesLabel.innerHTML = `
-            <input type="checkbox" id="layer-calles" data-table="calles" disabled>
-            Calles (requiere filtro)
-        `;
+        callesLabel.innerHTML = `<input type="checkbox" id="layer-calles" data-table="calles" disabled> Calles (requiere filtro)`;
     }
-
     if (suministrosLabel) {
-        suministrosLabel.innerHTML = `
-            <input type="checkbox" id="layer-suministros" data-table="suministros" disabled>
-            Suministros (requiere filtro)
-        `;
+        suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" disabled> Suministros (requiere filtro)`;
     }
     
-    // Desactivar checkboxes de calles, red de gas y suministros
     const redGasCheckbox = document.getElementById('layer-red_de_gas');
     const callesCheckbox = document.getElementById('layer-calles');
     const suministrosCheckbox = document.getElementById('layer-suministros');
     
-    if (redGasCheckbox) {
-        redGasCheckbox.checked = false;
-        redGasCheckbox.disabled = true;
+    if (redGasCheckbox) { redGasCheckbox.checked = false; redGasCheckbox.disabled = true; }
+    if (callesCheckbox) { callesCheckbox.checked = false; callesCheckbox.disabled = true; }
+    if (suministrosCheckbox) { suministrosCheckbox.checked = false; suministrosCheckbox.disabled = true; }
+    
+    if (layerGroups.red_de_gas && map.hasLayer(layerGroups.red_de_gas)) map.removeLayer(layerGroups.red_de_gas);
+    if (layerGroups.calles && map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
+    if (layerGroups.suministros && map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
+    
+    if (layerGroups.red_de_gas) layerGroups.red_de_gas.clearLayers();
+    if (layerGroups.calles) layerGroups.calles.clearLayers();
+    if (layerGroups.suministros) layerGroups.suministros.clearLayers();
+    
+    // Volver a renderizar todos los suministros (sin filtro)
+    if (suministrosData.length > 0) {
+        renderDataToLayer('suministros', suministrosData);
     }
     
-    if (callesCheckbox) {
-        callesCheckbox.checked = false;
-        callesCheckbox.disabled = true;
-    }
-
-    if (suministrosCheckbox) {
-        suministrosCheckbox.checked = false;
-        suministrosCheckbox.disabled = true;
-    }
+    if (municipiosData.length > 0) renderDataToLayer('municipios', municipiosData);
+    if (localidadesData.length > 0) renderDataToLayer('localidades', localidadesData);
     
-    // Remover capas de calles, red de gas y suministros del mapa
-    map.removeLayer(layerGroups.red_de_gas);
-    map.removeLayer(layerGroups.calles);
-    if (map.hasLayer(layerGroups.suministros)) {
-        map.removeLayer(layerGroups.suministros);
-    }
+    if (!map.hasLayer(layerGroups.municipios)) layerGroups.municipios.addTo(map);
     
-    // Limpiar capas de calles, red de gas y suministros
-    layerGroups.red_de_gas.clearLayers();
-    layerGroups.calles.clearLayers();
-    layerGroups.suministros.clearLayers();
-    
-    // Limpiar arrays de datos
-    callesData = [];
-    redGasData = [];
-    suministrosData = [];
-    
-    // Restaurar todas las capas de municipios y localidades
-    if (municipiosData.length > 0) {
-        renderDataToLayer('municipios', municipiosData);
-    }
-    if (localidadesData.length > 0) {
-        renderDataToLayer('localidades', localidadesData);
-    }
-    
-    // ==== AGREGAR: Asegurar que municipios esté visible y checkbox marcado ====
-    if (!map.hasLayer(layerGroups.municipios)) {
-    layerGroups.municipios.addTo(map);
-    }
-
-    // Marcar checkbox de municipios
     const municipiosCheckbox = document.getElementById('layer-municipios');
-    if (municipiosCheckbox) {
-    municipiosCheckbox.checked = true;
-}
-// ========================================================================
-
-    // Ocultar leyenda
+    if (municipiosCheckbox) municipiosCheckbox.checked = true;
+    
     document.getElementById('toggleLegendBtn').style.display = 'none';
     document.getElementById('legend').style.display = 'none';
-
-    // Ocultar lista de localidades de unidad regional
+    
     const localidadesURContainer = document.getElementById('localidadesURContainer');
     if (localidadesURContainer) {
         localidadesURContainer.style.display = 'none';
         document.getElementById('localidadesURList').innerHTML = '';
     }
     
-    // Restaurar vista inicial
+    limpiarModuloRuteo();
     map.setView([-36.14685, -60.28183], 6);
-    
-    // Actualizar lista
-    //updateElementList();
-    
     showStatus('Filtro limpiado', 'success');
-    }
+}
 
-// ===============================
-// FUNCIONES AUXILIARES
-// ===============================
-
-// Actualizar lista de elementos
-/*function updateElementList() {
-    const elementList = document.getElementById('elementList');
-    if (!elementList) return;
-    
-    elementList.innerHTML = '';
-    
-    let totalElements = 0;
-    
-    for (const [name, group] of Object.entries(layerGroups)) {
-        const count = group.getLayers().length;
-        if (count > 0) {
-            const item = document.createElement('div');
-            item.className = 'element-item';
-            
-            let displayName = name.replace('_', ' ');
-            
-            // Personalizar nombres según el filtro
-            if (currentFilter) {
-                if (name === 'calles' || name === 'red_de_gas') {
-                    displayName = `${displayName} (${currentFilter.name})`;
-                } else if (name === 'municipios' && currentFilter.type === 'municipio') {
-                    displayName = `Municipio (${currentFilter.name})`;
-                } else if (name === 'localidades' && currentFilter.type === 'localidad') {
-                    displayName = `Localidad (${currentFilter.name})`;
-                }
-            }
-            
-            item.textContent = `${displayName}: ${count} elementos`;
-            item.onclick = () => {
-                if (group.getLayers().length > 0) {
-                    const bounds = getLayerGroupBounds(group);
-                    if (bounds && bounds.isValid()) {
-                        map.fitBounds(bounds.pad(0.1));
-                    }
-                }
-            };
-            elementList.appendChild(item);
-            totalElements += count;
-        }
-    }
-    
-    if (totalElements === 0) {
-        elementList.innerHTML = '<div style="padding: 10px; text-align: center; color: #999;">Sin elementos cargados</div>';
-    }
-}*/
-
-// Manejar cambios en checkboxes
 function handleCheckboxChange() {
     const tableName = this.dataset.table;
     const isChecked = this.checked;
     
-    console.log(`Checkbox ${tableName}: ${isChecked ? 'activado' : 'desactivado'}`);
-    
     if (isChecked) {
-        if (!map.hasLayer(layerGroups[tableName])) {
-            layerGroups[tableName].addTo(map);
-        }
+        if (layerGroups[tableName] && !map.hasLayer(layerGroups[tableName])) layerGroups[tableName].addTo(map);
     } else {
-        if (map.hasLayer(layerGroups[tableName])) {
-            map.removeLayer(layerGroups[tableName]);
-        }
+        if (layerGroups[tableName] && map.hasLayer(layerGroups[tableName])) map.removeLayer(layerGroups[tableName]);
     }
-
-    // Mostrar/ocultar botón de leyenda según estado de red_de_gas
+    
     if (tableName === 'red_de_gas') {
         const toggleBtn = document.getElementById('toggleLegendBtn');
-        const legend    = document.getElementById('legend');
-        if (isChecked) {
-            toggleBtn.style.display = 'block';
-        } else {
-            toggleBtn.style.display = 'none';
-            legend.style.display = 'none';
-            toggleBtn.textContent = 'Mostrar Leyenda';
+        const legend = document.getElementById('legend');
+        if (toggleBtn && legend) {
+            if (isChecked) {
+                toggleBtn.style.display = 'block';
+            } else {
+                toggleBtn.style.display = 'none';
+                legend.style.display = 'none';
+                toggleBtn.textContent = 'Mostrar Leyenda';
+            }
         }
     }
 }
-// ===============================
-// EDICIÓN DE ESTADO EN SUPABASE
-// ===============================
 
 async function updateEstado(safeKey, medidor) {
     const select = document.getElementById(`estado-select-${safeKey}`);
     const msgDiv = document.getElementById(`popup-msg-${safeKey}`);
     if (!select || !msgDiv) return;
-
+    
     const nuevoEstado = select.value;
-    msgDiv.textContent = 'Guardando...';
+    msgDiv.innerHTML = '⏳ Guardando...';
     msgDiv.style.color = '#856404';
-
+    
     try {
         const { error } = await supabaseClient
             .from('suministros')
             .update({ estado: nuevoEstado })
             .eq('medidor', parseInt(medidor, 10));
-
+        
         if (error) throw error;
-
-        // Actualizar en el array local
+        
         const item = suministrosData.find(s => String(s.medidor) === String(medidor));
         if (item) item.estado = nuevoEstado;
-
-        // Actualizar color del punto en el mapa
-        actualizarColorPuntoByMedidor(medidor, nuevoEstado);
-
-        msgDiv.textContent = '✓ Guardado correctamente';
+        
+        actualizarColorPuntoByMedidor(medidor);
+        msgDiv.innerHTML = '✅ Guardado correctamente';
         msgDiv.style.color = '#155724';
-
     } catch (err) {
         console.error('Error actualizando estado:', err);
-        msgDiv.textContent = '✗ ' + (err.message || 'Error al guardar');
+        msgDiv.innerHTML = '❌ ' + (err.message || 'Error al guardar');
         msgDiv.style.color = '#721c24';
     }
 }
 
-function actualizarColorPuntoByMedidor(medidor, nuevoEstado) {
-    const color = getColorByEstado(nuevoEstado);
-    const borderColor = color === '#ffc107' ? '#cc9a00' : color === '#dc3545' ? '#a71d2a' : '#1a7a32';
-
+function actualizarColorPuntoByMedidor(medidor) {
     layerGroups.suministros.eachLayer(function(geoJsonLayer) {
         geoJsonLayer.eachLayer(function(circleLayer) {
             const props = circleLayer.feature && circleLayer.feature.properties;
             if (props && String(props.medidor) === String(medidor)) {
+                const ruta = props.ruta;
+                const orden = props.orden;
+                const tieneRuta = ruta && ruta !== null && ruta !== '';
+                const tieneOrden = orden && orden !== null && orden !== 0;
+                let color = (tieneRuta && tieneOrden) ? obtenerColorRuta(String(ruta)) : '#aaaaaa';
+                const borderColor = color === '#aaaaaa' ? '#666666' : color;
                 circleLayer.setStyle({ fillColor: color, color: borderColor });
             }
         });
     });
 }
 
-// ===============================
-// PANEL DE BÚSQUEDA
-// ===============================
-
 function initSearchPanel() {
     const toggleBtn = document.getElementById('toggleSearchBtn');
-    const closeBtn  = document.getElementById('closeSearchBtn');
-    const panel     = document.getElementById('searchPanel');
+    const closeBtn = document.getElementById('closeSearchBtn');
+    const panel = document.getElementById('searchPanel');
     const searchBtn = document.getElementById('searchBtn');
-    const input     = document.getElementById('searchInput');
-
+    const input = document.getElementById('searchInput');
+    
     if (!toggleBtn || !panel) return;
-
     toggleBtn.addEventListener('click', () => panel.classList.toggle('open'));
-    closeBtn.addEventListener('click',  () => panel.classList.remove('open'));
-    searchBtn.addEventListener('click', buscarSuministro);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') buscarSuministro(); });
+    if (closeBtn) closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+    if (searchBtn) searchBtn.addEventListener('click', buscarSuministro);
+    if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') buscarSuministro(); });
 }
 
 function buscarSuministro() {
-    const campo      = document.getElementById('searchField').value;
-    const texto      = document.getElementById('searchInput').value.trim().toLowerCase();
+    const campo = document.getElementById('searchField').value;
+    const texto = document.getElementById('searchInput').value.trim().toLowerCase();
     const resultsDiv = document.getElementById('searchResults');
-
-    if (!texto) {
-        resultsDiv.innerHTML = '<div class="search-no-results">Ingresá un texto para buscar.</div>';
-        return;
-    }
-    if (suministrosData.length === 0) {
-        resultsDiv.innerHTML = '<div class="search-no-results">Primero cargá los datos base.</div>';
-        return;
-    }
-
-    // Todos los que coinciden con el texto
-    const todoEncontrado = suministrosData.filter(s => {
-        const valor = s[campo];
-        return valor && String(valor).toLowerCase().includes(texto);
-    });
-
-    if (todoEncontrado.length === 0) {
-        resultsDiv.innerHTML = '<div class="search-no-results">Sin resultados.</div>';
-        return;
-    }
-
-    // Si hay filtro activo, separar en "en esta localidad" y "en otra"
-    let enFiltro = todoEncontrado;
-    let enOtra   = [];
-
+    if (!texto) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Ingresá un texto para buscar.</div>'; return; }
+    if (suministrosData.length === 0) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Primero cargá los datos base.</div>'; return; }
+    
+    const todoEncontrado = suministrosData.filter(s => { const valor = s[campo]; return valor && String(valor).toLowerCase().includes(texto); });
+    if (!resultsDiv) return;
+    if (todoEncontrado.length === 0) { resultsDiv.innerHTML = '<div class="search-no-results">Sin resultados.</div>'; return; }
+    
+    let enFiltro = todoEncontrado, enOtra = [];
     if (currentFilter && currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
         const numFimms = currentFilter.num_fimm.map(String);
         enFiltro = todoEncontrado.filter(s => numFimms.includes(String(s.Localidad)));
-        enOtra   = todoEncontrado.filter(s => !numFimms.includes(String(s.Localidad)));
+        enOtra = todoEncontrado.filter(s => !numFimms.includes(String(s.Localidad)));
     }
-
+    
     resultsDiv.innerHTML = '';
-
-    // Resultados en la localidad filtrada
     if (enFiltro.length > 0) {
-        const mostrar = enFiltro.slice(0, 20);
-        if (enFiltro.length > 20) {
-            const aviso = document.createElement('div');
-            aviso.className = 'search-no-results';
-            aviso.textContent = `Mostrando 20 de ${enFiltro.length} resultados en ${currentFilter.name}.`;
-            resultsDiv.appendChild(aviso);
-        }
-        mostrar.forEach(item => renderResultItem(item, resultsDiv));
+        enFiltro.slice(0, 20).forEach(item => renderResultItem(item, resultsDiv));
+        if (enFiltro.length > 20) resultsDiv.innerHTML += '<div class="search-no-results">Mostrando 20 de ' + enFiltro.length + ' resultados.</div>';
     } else if (currentFilter && currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
-        const aviso = document.createElement('div');
-        aviso.className = 'search-no-results';
-        aviso.textContent = `No se encontró en ${currentFilter.name}.`;
-        resultsDiv.appendChild(aviso);
+        resultsDiv.innerHTML = '<div class="search-no-results">No se encontró en ' + currentFilter.name + '.</div>';
     }
-
-    // Resultados en otras localidades
     if (enOtra.length > 0) {
-        const separador = document.createElement('div');
-        separador.style.cssText = 'font-size:11px; color:#856404; background:#fff3cd; padding:5px 8px; border-radius:3px; margin-top:6px;';
-        separador.textContent = `⚠️ ${enOtra.length} resultado(s) encontrado(s) en otra localidad:`;
-        resultsDiv.appendChild(separador);
-
+        resultsDiv.innerHTML += '<div style="font-size:11px; color:#856404; background:#fff3cd; padding:5px; margin-top:6px;">⚠️ ' + enOtra.length + ' resultado(s) en otra localidad:</div>';
         enOtra.slice(0, 5).forEach(item => {
-            // Buscar nombre de la localidad
             const loc = localidadesData.find(l => String(l.num_fimm) === String(item.Localidad));
             renderResultItem(item, resultsDiv, loc ? loc.nombre : `Localidad ${item.Localidad}`);
         });
     }
-
-    // Sin filtro activo — mostrar todo
     if (!currentFilter || !currentFilter.num_fimm || currentFilter.num_fimm.length === 0) {
-        const mostrar = todoEncontrado.slice(0, 20);
-        if (todoEncontrado.length > 20) {
-            const aviso = document.createElement('div');
-            aviso.className = 'search-no-results';
-            aviso.textContent = `Mostrando 20 de ${todoEncontrado.length} resultados.`;
-            resultsDiv.appendChild(aviso);
-        }
-        mostrar.forEach(item => renderResultItem(item, resultsDiv));
+        todoEncontrado.slice(0, 20).forEach(item => renderResultItem(item, resultsDiv));
+        if (todoEncontrado.length > 20) resultsDiv.innerHTML += '<div class="search-no-results">Mostrando 20 de ' + todoEncontrado.length + ' resultados.</div>';
     }
 }
 
 function renderResultItem(item, container, otraLocalidad = null) {
+    const ruta = item.ruta || '-';
+    const orden = item.orden || '-';
+    const colorRuta = (ruta && ruta !== '-') ? obtenerColorRuta(String(ruta)) : '#666';
+    
     const div = document.createElement('div');
     div.className = 'search-result-item';
-    div.innerHTML = `
-        <div class="result-main">${item.Nombre || item.medidor || '-'}</div>
-        <div class="result-sub">Medidor: ${item.medidor || '-'} | Estado: ${item.estado || '-'}</div>
-        <div class="result-sub">${item.Direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>
-    `;
+    div.innerHTML = `<div class="result-main">${item.Nombre || item.medidor || '-'}</div>
+        <div class="result-sub">🔢 Medidor: ${item.medidor || '-'} | Estado: ${item.estado || '-'}</div>
+        <div class="result-sub">🚚 Ruta: <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span> | 🔢 Orden: ${orden}</div>
+        <div class="result-sub">📍 ${item.Direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>`;
     div.addEventListener('click', () => zoomASuministro(item));
     container.appendChild(div);
 }
@@ -1739,59 +1101,531 @@ function renderResultItem(item, container, otraLocalidad = null) {
 function zoomASuministro(item) {
     const geom = item.geom || item.wkt_geom || item.the_geom;
     if (!geom) return;
-
     let coords;
-    if (typeof geom === 'object' && geom.coordinates) {
-        coords = geom.coordinates;
-    } else if (typeof geom === 'string') {
-        const gj = wktToGeoJSON(geom);
-        if (gj && gj.coordinates) coords = gj.coordinates;
-    }
-
+    if (typeof geom === 'object' && geom.coordinates) coords = geom.coordinates;
+    else if (typeof geom === 'string') { const gj = wktToGeoJSON(geom); if (gj && gj.coordinates) coords = gj.coordinates; }
     if (!coords) return;
-
     const latlng = L.latLng(coords[1], coords[0]);
-    map.setView(latlng, 17);
-
-    // Buscar el layer, resaltarlo y abrir su popup
+    map.setView(latlng, 18);
     layerGroups.suministros.eachLayer(function(geoJsonLayer) {
         geoJsonLayer.eachLayer(function(circleLayer) {
             const props = circleLayer.feature && circleLayer.feature.properties;
             if (props && String(props.medidor) === String(item.medidor)) {
                 setTimeout(() => {
-                    // Guardar estilo original
-                    const colorOriginal = circleLayer.options.fillColor;
-                    const borderOriginal = circleLayer.options.color;
-                    const radioOriginal = circleLayer.options.radius;
-
-                    // Aplicar estilo resaltado
-                    circleLayer.setStyle({
-                        fillColor: '#ffffff',
-                        color: '#0000ff',
-                        weight: 3,
-                        radius: 10,
-                        fillOpacity: 0.9
-                    });
-                    circleLayer.setRadius(10);
-
-                    // Abrir popup
+                    const colorOriginal = circleLayer.options.fillColor, borderOriginal = circleLayer.options.color, radioOriginal = circleLayer.options.radius;
+                    circleLayer.setStyle({ fillColor: '#ffffff', color: '#0000ff', weight: 3, radius: 12, fillOpacity: 0.9 });
+                    circleLayer.setRadius(12);
                     circleLayer.openPopup();
-
-                    // Restaurar estilo original después de 2 segundos
                     setTimeout(() => {
-                        circleLayer.setStyle({
-                            fillColor: colorOriginal,
-                            color: borderOriginal,
-                            weight: 1,
-                            fillOpacity: 0.85
-                        });
-                        circleLayer.setRadius(radioOriginal || 3);
-                    }, 2000);
-
+                        circleLayer.setStyle({ fillColor: colorOriginal, color: borderOriginal, weight: 1.5, fillOpacity: 0.85 });
+                        circleLayer.setRadius(radioOriginal || 4);
+                    }, 2500);
                 }, 400);
             }
         });
     });
+    const searchPanel = document.getElementById('searchPanel');
+    if (searchPanel) searchPanel.classList.remove('open');
+}
 
-    document.getElementById('searchPanel').classList.remove('open');
+// ================================================================
+// MÓDULO DE RUTEO CON PANEL DE RUTAS Y TOGGLES POR RUTA
+// ================================================================
+
+function inicializarModuloRuteo(suministros, localidadNombre) {
+    console.log('📦 Inicializando módulo de ruteo con', suministros.length, 'suministros');
+    
+    localidadFiltroActual = localidadNombre;
+    borrador = [];
+    suministrosBorradorMap = {};
+    modoEdicion = false;
+    rutasVisibles.clear();
+    
+    // Clasificar suministros basado en ruta y orden
+    suministrosConRuta = suministros.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
+    suministrosSinRuta = suministros.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
+    
+    console.log(`📊 Clasificación: ${suministrosConRuta.length} con ruta+orden, ${suministrosSinRuta.length} sin asignar`);
+    
+    // Inicializar mapa de borrador
+    suministros.forEach(s => {
+        suministrosBorradorMap[s.medidor] = { ruta: s.ruta ?? null, orden: s.orden ?? null };
+    });
+    
+    // Inicializar visibilidad de rutas (todas visibles por defecto)
+    const rutasUnicas = [...new Set(suministrosConRuta.map(s => String(s.ruta)))];
+    rutasUnicas.forEach(ruta => rutasVisibles.set(ruta, true));
+    
+    // Asegurar que los puntos se muestren correctamente en el mapa
+    if (layerGroups.suministros) {
+        renderDataToLayer('suministros', suministros);
+    }
+    
+    renderPanelRuteo();
+}
+
+function limpiarModuloRuteo() {
+    if (ruteoLayerGroup) { map.removeLayer(ruteoLayerGroup); ruteoLayerGroup = null; }
+    if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
+    if (capaRutasGroup) { map.removeLayer(capaRutasGroup); capaRutasGroup = null; }
+    
+    suministrosConRuta = [];
+    suministrosSinRuta = [];
+    borrador = [];
+    suministrosBorradorMap = {};
+    modoEdicion = false;
+    localidadFiltroActual = null;
+    rutasVisibles.clear();
+    
+    const panel = document.getElementById('ruteoModuloPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function renderPanelRuteo() {
+    let panel = document.getElementById('ruteoModuloPanel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'ruteoModuloPanel';
+        panel.className = 'filter-section';
+        const capasH3 = [...document.querySelectorAll('#sidebar h3')].find(h => h.textContent.includes('Capas Disponibles'));
+        if (capasH3) {
+            capasH3.parentNode.insertBefore(panel, capasH3);
+        } else {
+            document.getElementById('sidebar').appendChild(panel);
+        }
+    }
+    
+    const rutasUnicas = [...new Set(suministrosConRuta.map(s => String(s.ruta)))].sort((a, b) => Number(a) - Number(b));
+    const yaAsignadosEnBorrador = new Set(borrador.map(b => String(b.medidor)));
+    const sinAsignarCount = suministrosSinRuta.filter(s => !yaAsignadosEnBorrador.has(String(s.medidor))).length;
+    const hayBorrador = borrador.length > 0;
+    
+    panel.innerHTML = `
+        <h3>🗺️ Gestión de Rutas</h3>
+        
+        <div style="font-size:0.82em; color:#555; margin-bottom:8px;">
+            ${localidadFiltroActual || ''} · ${rutasUnicas.length} ruta(s) · 
+            <span style="color:${sinAsignarCount > 0 ? '#c0392b' : '#27ae60'}; font-weight:bold;">
+                ${sinAsignarCount} sin asignar
+            </span>
+        </div>
+        
+        ${rutasUnicas.length > 0 ? `
+        <div style="margin-bottom:10px; max-height:200px; overflow-y:auto;">
+            ${rutasUnicas.map(ruta => {
+                const sumisEnRuta = suministrosConRuta.filter(s => String(s.ruta) === ruta);
+                const color = obtenerColorRuta(ruta);
+                const esVisible = rutasVisibles.get(ruta) !== false;
+                return `
+                    <div class="ruta-item" data-ruta="${ruta}" style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 6px 8px;
+                        margin: 4px 0;
+                        background: ${color}15;
+                        border-left: 4px solid ${color};
+                        border-radius: 4px;
+                        opacity: ${esVisible ? '1' : '0.5'};
+                    ">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <button class="ruta-toggle-btn" data-ruta="${ruta}" style="
+                                width: 28px;
+                                height: 28px;
+                                background: ${color};
+                                color: white;
+                                border: none;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 12px;
+                                margin: 0;
+                            ">${esVisible ? '👁️' : '👁️‍🗨️'}</button>
+                            <strong style="color: ${color};font-size: 12px;">🚚 Ruta ${ruta}</strong>
+                        </div>
+                        <span style="background: ${color}30; padding: 2px 6px; border-radius: 10px; font-size: 10px;">
+                            ${sumisEnRuta.length} sum.
+                        </span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+        ` : `<div style="font-size:0.82em; color:#888; margin-bottom:8px;">📭 No hay rutas asignadas</div>`}
+        
+        ${sinAsignarCount > 0 ? `
+        <button id="ruteoModoEdicionBtn" class="filter-btn" style="background:${modoEdicion ? '#c0392b' : '#2980b9'}; margin-bottom:4px;">
+            ${modoEdicion ? '⏹ Salir de asignación' : '✏️ Asignar puntos sin ruta'}
+        </button>
+        ` : ''}
+        
+        ${hayBorrador ? `
+        <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:4px; padding:6px 8px; font-size:0.8em; margin-bottom:6px;">
+            <strong>⚠️ Borrador:</strong> ${borrador.length} cambio(s) pendiente(s)
+        </div>
+        <button id="ruteoConfirmarBtn" class="filter-btn" style="background:#27ae60; margin-bottom:3px;">
+            💾 Confirmar y guardar
+        </button>
+        <button id="ruteoDescartarBtn" class="filter-btn clear" style="margin-bottom:4px;">
+            ✗ Descartar cambios
+        </button>
+        ` : ''}
+    `;
+    
+    panel.style.display = 'block';
+    
+    // Event listeners para los toggles de ruta
+    document.querySelectorAll('.ruta-toggle-btn').forEach(btn => {
+        btn.removeEventListener('click', handleRutaToggle);
+        btn.addEventListener('click', handleRutaToggle);
+    });
+    
+    document.getElementById('ruteoModoEdicionBtn')?.removeEventListener('click', toggleModoEdicion);
+    document.getElementById('ruteoModoEdicionBtn')?.addEventListener('click', toggleModoEdicion);
+    document.getElementById('ruteoConfirmarBtn')?.removeEventListener('click', confirmarBorrador);
+    document.getElementById('ruteoConfirmarBtn')?.addEventListener('click', confirmarBorrador);
+    document.getElementById('ruteoDescartarBtn')?.removeEventListener('click', descartarBorrador);
+    document.getElementById('ruteoDescartarBtn')?.addEventListener('click', descartarBorrador);
+}
+
+function handleRutaToggle(e) {
+    e.stopPropagation();
+    const ruta = e.currentTarget.getAttribute('data-ruta');
+    toggleVisibilidadRuta(ruta);
+}
+
+function toggleVisibilidadRuta(ruta) {
+    const esVisible = rutasVisibles.get(ruta);
+    rutasVisibles.set(ruta, !esVisible);
+    
+    // Actualizar los puntos de suministros de esta ruta
+    layerGroups.suministros.eachLayer(function(geoJsonLayer) {
+        geoJsonLayer.eachLayer(function(circleLayer) {
+            const props = circleLayer.feature && circleLayer.feature.properties;
+            if (props && String(props.ruta) === String(ruta)) {
+                if (esVisible) {
+                    // Estaba visible, ahora ocultar
+                    if (map.hasLayer(circleLayer)) map.removeLayer(circleLayer);
+                } else {
+                    // Estaba oculta, ahora mostrar
+                    if (!map.hasLayer(circleLayer)) circleLayer.addTo(map);
+                }
+            }
+        });
+    });
+    
+    // Actualizar UI del panel
+    const rutaItem = document.querySelector(`.ruta-item[data-ruta="${ruta}"]`);
+    if (rutaItem) {
+        const toggleBtn = rutaItem.querySelector('.ruta-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.textContent = !esVisible ? '👁️' : '👁️‍🗨️';
+        }
+        rutaItem.style.opacity = !esVisible ? '1' : '0.5';
+    }
+    
+    showStatus(`${!esVisible ? 'Mostrando' : 'Ocultando'} ruta ${ruta}`, 'success');
+}
+
+function toggleModoEdicion() {
+    modoEdicion = !modoEdicion;
+    
+    if (modoEdicion) {
+        renderPuntosSinAsignar();
+        map.getContainer().style.cursor = 'crosshair';
+        showStatus('✏️ Modo edición activado. Haga clic en un punto sin asignar para asignarlo.', 'loading');
+    } else {
+        if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
+        map.getContainer().style.cursor = '';
+        showStatus('Modo edición desactivado.', 'success');
+    }
+    
+    renderPanelRuteo();
+}
+
+function renderPuntosSinAsignar() {
+    if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
+    ruteoSinAsignarLayer = L.layerGroup().addTo(map);
+    
+    const yaAsignados = new Set(borrador.map(b => String(b.medidor)));
+    const pendientes = suministrosSinRuta.filter(s => !yaAsignados.has(String(s.medidor)));
+    
+    console.log(`📍 Puntos sin asignar a renderizar: ${pendientes.length}`);
+    
+    pendientes.forEach(s => {
+        const latlng = getLatLngFromSuministro(s);
+        if (!latlng) return;
+        
+        const marker = L.circleMarker(latlng, {
+            radius: 8,
+            fillColor: '#e74c3c',
+            color: '#922b21',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.85
+        }).bindTooltip(`Sin asignar<br>Medidor: ${s.medidor}<br>${s.Nombre || ''}`, { permanent: false });
+        
+        marker.on('click', () => abrirPopupAsignacion(s, marker));
+        ruteoSinAsignarLayer.addLayer(marker);
+    });
+    
+    if (pendientes.length === 0 && modoEdicion) {
+        showStatus('✓ Todos los puntos están asignados.', 'success');
+        modoEdicion = false;
+        renderPanelRuteo();
+    }
+}
+
+function abrirPopupAsignacion(suministro, marker) {
+    const rutasExistentes = [...new Set(suministrosConRuta.map(s => String(s.ruta)))].sort((a, b) => Number(a) - Number(b));
+    const siguienteOrden = {};
+    rutasExistentes.forEach(r => { siguienteOrden[r] = getSiguienteOrden(r); });
+    
+    const popupId = `asig_${suministro.medidor}`;
+    
+    const html = `
+        <div style="min-width:220px; font-size:0.85em;">
+            <strong>✏️ Asignar suministro</strong><br>
+            <span style="color:#555;">Medidor: ${suministro.medidor}</span><br>
+            <span style="color:#555;">${suministro.Nombre || ''}</span>
+            <hr style="margin:6px 0;">
+            
+            <label style="font-weight:600;">🚚 Ruta:</label>
+            <select id="${popupId}_ruta" style="width:100%; margin:3px 0 6px;">
+                ${rutasExistentes.map(r => `<option value="${r}">Ruta ${r} (siguiente orden: ${siguienteOrden[r]})</option>`).join('')}
+                <option value="__nueva__">+ Crear nueva ruta</option>
+            </select>
+            
+            <div id="${popupId}_nuevaRutaDiv" style="display:none; margin-bottom:6px;">
+                <label style="font-weight:600;">Número de nueva ruta:</label>
+                <input id="${popupId}_nuevaRuta" type="number" min="1" style="width:100%; margin-top:3px;" placeholder="Ej: 5">
+            </div>
+            
+            <label style="font-weight:600;">🔢 Orden:</label>
+            <input id="${popupId}_orden" type="number" min="1" style="width:100%; margin:3px 0 8px;" value="${rutasExistentes.length > 0 ? siguienteOrden[rutasExistentes[0]] : 1}">
+            
+            <button onclick="confirmarAsignacionPopup('${suministro.medidor}', '${popupId}')"
+                style="width:100%; padding:6px; background:#2980b9; color:white; border:none; border-radius:4px; cursor:pointer;">
+                ✓ Confirmar Asignación
+            </button>
+        </div>
+    `;
+    
+    const popup = L.popup({ maxWidth: 260 }).setLatLng(marker.getLatLng()).setContent(html).openOn(map);
+    
+    setTimeout(() => {
+        const selectRuta = document.getElementById(`${popupId}_ruta`);
+        const nuevaDiv = document.getElementById(`${popupId}_nuevaRutaDiv`);
+        const ordenInput = document.getElementById(`${popupId}_orden`);
+        if (!selectRuta) return;
+        
+        selectRuta.addEventListener('change', function() {
+            if (this.value === '__nueva__') {
+                nuevaDiv.style.display = 'block';
+                ordenInput.value = 1;
+            } else {
+                nuevaDiv.style.display = 'none';
+                ordenInput.value = siguienteOrden[this.value] ?? 1;
+            }
+        });
+    }, 50);
+}
+
+window.confirmarAsignacionPopup = function(medidor, popupId) {
+    const selectEl = document.getElementById(`${popupId}_ruta`);
+    const ordenEl = document.getElementById(`${popupId}_orden`);
+    const nuevaEl = document.getElementById(`${popupId}_nuevaRuta`);
+    
+    if (!selectEl || !ordenEl) return;
+    
+    let rutaNueva = selectEl.value;
+    if (rutaNueva === '__nueva__') {
+        rutaNueva = nuevaEl?.value?.trim();
+        if (!rutaNueva) { alert('Ingrese un número de ruta.'); return; }
+    }
+    const ordenNuevo = parseInt(ordenEl.value, 10);
+    if (isNaN(ordenNuevo) || ordenNuevo < 1) { alert('Ingrese un orden válido.'); return; }
+    
+    const suministro = suministrosSinRuta.find(s => String(s.medidor) === String(medidor));
+    if (!suministro) return;
+    
+    // Desplazar órdenes en borrador
+    desplazarOrdenEnBorrador(String(rutaNueva), ordenNuevo, medidor);
+    
+    const entrada = {
+        medidor,
+        rutaAnterior: suministro.ruta ?? null,
+        ordenAnterior: suministro.orden ?? null,
+        rutaNueva: String(rutaNueva),
+        ordenNuevo
+    };
+    const existente = borrador.findIndex(b => String(b.medidor) === String(medidor));
+    if (existente >= 0) borrador[existente] = entrada;
+    else borrador.push(entrada);
+    
+    suministrosBorradorMap[medidor] = { ruta: String(rutaNueva), orden: ordenNuevo };
+    
+    // Mover de sinRuta a conRuta en memoria
+    const idx = suministrosSinRuta.findIndex(s => String(s.medidor) === String(medidor));
+    if (idx >= 0) {
+        const s = suministrosSinRuta.splice(idx, 1)[0];
+        s.ruta = String(rutaNueva);
+        s.orden = ordenNuevo;
+        suministrosConRuta.push(s);
+        
+        // Actualizar visibilidad de la nueva ruta
+        if (!rutasVisibles.has(String(rutaNueva))) {
+            rutasVisibles.set(String(rutaNueva), true);
+        }
+    }
+    
+    map.closePopup();
+    renderPuntosSinAsignar();
+    renderPanelRuteo();
+    
+    // Actualizar el color del punto en el mapa
+    actualizarColorPuntoByMedidor(medidor);
+    
+    showStatus(`✅ Medidor ${medidor} → Ruta ${rutaNueva}, Orden ${ordenNuevo} (borrador)`, 'success');
+};
+
+function desplazarOrdenEnBorrador(ruta, ordenDesde, medidorNuevo) {
+    const afectados = [];
+    
+    suministrosConRuta.forEach(s => {
+        const est = suministrosBorradorMap[s.medidor] || { ruta: s.ruta, orden: s.orden };
+        if (String(est.ruta) === String(ruta) && Number(est.orden) >= ordenDesde && String(s.medidor) !== String(medidorNuevo)) {
+            afectados.push({ medidor: s.medidor, ordenActual: Number(est.orden) });
+        }
+    });
+    
+    borrador.forEach(b => {
+        if (String(b.rutaNueva) === String(ruta) && Number(b.ordenNuevo) >= ordenDesde && String(b.medidor) !== String(medidorNuevo)) {
+            if (!afectados.find(a => String(a.medidor) === String(b.medidor))) {
+                afectados.push({ medidor: b.medidor, ordenActual: Number(b.ordenNuevo) });
+            }
+        }
+    });
+    
+    afectados.sort((a, b) => b.ordenActual - a.ordenActual);
+    
+    afectados.forEach(({ medidor, ordenActual }) => {
+        suministrosBorradorMap[medidor] = { ...suministrosBorradorMap[medidor], orden: ordenActual + 1 };
+        
+        const enBorrador = borrador.findIndex(b => String(b.medidor) === String(medidor));
+        if (enBorrador >= 0) {
+            borrador[enBorrador].ordenNuevo = ordenActual + 1;
+        } else {
+            const original = suministrosConRuta.find(s => String(s.medidor) === String(medidor));
+            if (original) {
+                borrador.push({
+                    medidor,
+                    rutaAnterior: original.ruta,
+                    ordenAnterior: original.orden,
+                    rutaNueva: String(ruta),
+                    ordenNuevo: ordenActual + 1
+                });
+            }
+        }
+    });
+}
+
+async function confirmarBorrador() {
+    if (borrador.length === 0) return;
+    
+    const btn = document.getElementById('ruteoConfirmarBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+    
+    let errores = 0;
+    
+    for (const cambio of borrador) {
+        try {
+            const { error } = await supabaseClient
+                .from('suministros')
+                .update({ ruta: cambio.rutaNueva, orden: cambio.ordenNuevo })
+                .eq('medidor', cambio.medidor);
+            
+            if (error) {
+                console.error(`Error actualizando medidor ${cambio.medidor}:`, error);
+                errores++;
+            } else {
+                const idx = suministrosData.findIndex(s => String(s.medidor) === String(cambio.medidor));
+                if (idx >= 0) {
+                    suministrosData[idx].ruta = cambio.rutaNueva;
+                    suministrosData[idx].orden = cambio.ordenNuevo;
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            errores++;
+        }
+    }
+    
+    if (errores === 0) {
+        showStatus(`✓ ${borrador.length} cambio(s) guardados correctamente.`, 'success');
+        borrador = [];
+        suministrosBorradorMap = {};
+        suministrosConRuta = suministrosData.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
+        suministrosSinRuta = suministrosData.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
+        
+        // Re-renderizar suministros en el mapa
+        if (layerGroups.suministros && currentFilter && currentFilter.num_fimm) {
+            const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+            renderDataToLayer('suministros', suministrosFiltrados);
+            inicializarModuloRuteo(suministrosFiltrados, localidadFiltroActual);
+        } else if (layerGroups.suministros) {
+            renderDataToLayer('suministros', suministrosData);
+        }
+    } else {
+        showStatus(`⚠️ ${errores} error(es) al guardar.`, 'error');
+    }
+    
+    modoEdicion = false;
+    if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
+    map.getContainer().style.cursor = '';
+    renderPanelRuteo();
+}
+
+function descartarBorrador() {
+    if (!confirm(`¿Descartar ${borrador.length} cambio(s) pendiente(s)?`)) return;
+    
+    borrador = [];
+    suministrosBorradorMap = {};
+    suministrosConRuta = suministrosData.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
+    suministrosSinRuta = suministrosData.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
+    
+    modoEdicion = false;
+    if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
+    map.getContainer().style.cursor = '';
+    
+    // Re-renderizar
+    if (currentFilter && currentFilter.num_fimm) {
+        const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+        renderDataToLayer('suministros', suministrosFiltrados);
+        inicializarModuloRuteo(suministrosFiltrados, localidadFiltroActual);
+    }
+    
+    renderPanelRuteo();
+    showStatus('Cambios descartados.', 'success');
+}
+
+function getLatLngFromSuministro(s) {
+    const geomField = s.wkt_geom || s.geom || s.the_geom;
+    if (!geomField) return null;
+    const geojson = typeof geomField === 'string' ? wktToGeoJSON(geomField) : geomField;
+    if (!geojson) return null;
+    if (geojson.type === 'Point') return L.latLng(geojson.coordinates[1], geojson.coordinates[0]);
+    if (geojson.type === 'Feature' && geojson.geometry?.type === 'Point')
+        return L.latLng(geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]);
+    return null;
+}
+
+function getSiguienteOrden(ruta) {
+    let max = 0;
+    suministrosConRuta.forEach(s => {
+        const est = suministrosBorradorMap[s.medidor] || { ruta: s.ruta, orden: s.orden };
+        if (String(est.ruta) === String(ruta) && Number(est.orden) > max) max = Number(est.orden);
+    });
+    borrador.forEach(b => {
+        if (String(b.rutaNueva) === String(ruta) && Number(b.ordenNuevo) > max) max = Number(b.ordenNuevo);
+    });
+    return max + 1;
 }
