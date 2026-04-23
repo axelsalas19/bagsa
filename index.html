@@ -89,26 +89,34 @@
                 Suministros (requiere filtro)
             </label>
         </div>
-    </div>
-    
-    <!-- Botón búsqueda -->
-    <button id="toggleSearchBtn" title="Buscar suministro">🔍 Buscar</button>
 
-    <!-- Panel de búsqueda -->
-    <div id="searchPanel">
-        <div id="searchPanelHeader">
-            <span>Buscar Suministro</span>
-            <button id="closeSearchBtn">✕</button>
-        </div>
-        <div id="searchPanelBody">
+        <!-- Búsqueda dentro del sidebar -->
+        <div class="filter-section" id="searchSidebarSection">
+            <h3>🔍 Buscar Suministro</h3>
             <select id="searchField">
-                <option value="Nombre">Por Nombre</option>
-                <option value="medidor">Por Medidor</option>
-                <option value="Cliente">Por Cliente</option>
+                <option value="Nombre">Nombre</option>
+                <option value="medidor">Medidor</option>
+                <option value="Cliente">Cliente</option>
             </select>
             <input type="text" id="searchInput" placeholder="Ingrese texto a buscar...">
             <button id="searchBtn">Buscar</button>
             <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <!-- Botón Indicadores -->
+    <button id="toggleIndicadoresBtn" title="Ver indicadores">📊 Indicadores</button>
+
+    <!-- Panel de Indicadores -->
+    <div id="indicadoresPanel">
+        <div id="indicadoresPanelHeader">
+            <span>📊 KPIs</span>
+            <button id="closeIndicadoresBtn">✕</button>
+        </div>
+        <div id="indicadoresPanelBody">
+            <div id="indicadoresContent">
+                <p class="indicadores-hint">Cargue los datos base para ver los indicadores.</p>
+            </div>
         </div>
     </div>
 
