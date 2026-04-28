@@ -195,10 +195,10 @@ function initEventListeners() {
             if (legend) {
                 if (legend.style.display === 'block') {
                     legend.style.display = 'none';
-                    this.textContent = 'Referencia de Diámetros';
+                    this.textContent = 'Referencias de Diámetros';
                 } else {
                     legend.style.display = 'block';
-                    this.textContent = 'Ocultar Referencia';
+                    this.textContent = 'Ocultar Referencias';
                 }
             }
         });
@@ -579,7 +579,7 @@ async function loadBaseData() {
 function populateUnidadRegionalSelect() {
     const select = document.getElementById('selectUnidadRegional');
     if (!select) return;
-    select.innerHTML = '<option value="">-- Seleccione unidad regional --</option>';
+    select.innerHTML = '<option value="">-- Seleccione Unidad Regional --</option>';
     const unidades = [...new Set(localidadesData.map(l => l.unidad_regional).filter(ur => ur))].sort();
     unidades.forEach(unidad => {
         const option = document.createElement('option');
@@ -597,7 +597,7 @@ function populateUnidadRegionalSelect() {
 function populateLocalidadSelect() {
     const select = document.getElementById('selectLocalidad');
     if (!select) return;
-    select.innerHTML = '<option value="">-- Seleccione un Área de Servicio --</option>';
+    select.innerHTML = '<option value="">-- Seleccione Área de Servicio --</option>';
     localidadesData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
     localidadesData.forEach(item => {
         if (!item.nombre) return;
@@ -981,7 +981,7 @@ function handleCheckboxChange() {
             } else {
                 toggleBtn.style.display = 'none';
                 legend.style.display = 'none';
-                toggleBtn.textContent = 'Mostrar Leyenda';
+                toggleBtn.textContent = 'Referencias de diámetros';
             }
         }
     }
@@ -1187,7 +1187,7 @@ function renderIndicadores() {
     const rutasUnicas = new Set(suministrosActivos.filter(s => s.ruta && s.ruta !== '').map(s => String(s.ruta)));
 
     // --- Render HTML ---
-    let html = `<p class="indicadores-ctx">Contexto: <strong>${contextoLabel}</strong></p>`;
+    let html = `<p class="indicadores-ctx">Filtrado: <strong>${contextoLabel}</strong></p>`;
 
     // Cards KPI
     html += `<div class="kpi-cards">
@@ -1387,7 +1387,7 @@ function renderPanelRuteo() {
                                 font-size: 12px;
                                 margin: 0;
                             ">${esVisible ? '👁️' : '👁️‍🗨️'}</button>
-                            <strong style="color: ${color};font-size: 12px;">🚚 Ruta ${ruta}</strong>
+                            <strong style="color: ${color};font-size: 12px;">📭 Ruta ${ruta}</strong>
                         </div>
                         <span style="background: ${color}30; padding: 2px 6px; border-radius: 10px; font-size: 10px;">
                             ${sumisEnRuta.length} sum.
