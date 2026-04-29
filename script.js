@@ -5,6 +5,7 @@ let localidadesData = [];
 let callesData = [];
 let redGasData = [];
 let suministrosData = [];   // Cache completo — nunca se limpia con clearFilter
+let callesFiltradas  = [];  // Calles de la localidad activa (para búsqueda)
 let currentFilter = null;
 let map;
 let layerGroups;
@@ -712,6 +713,8 @@ async function aplicarFiltroLocalidad(localidadNombre) {
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
     if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
+    const cbLocalidades = document.getElementById('layer-localidades');
+    if (cbLocalidades) { cbLocalidades.checked = true; cbLocalidades.disabled = false; }
     
     const municipioPadre = municipiosData.find(m => m.nam === localidad.partido || m.nam === localidad.partido_ig);
     layerGroups.municipios.clearLayers();
@@ -725,7 +728,8 @@ async function aplicarFiltroLocalidad(localidadNombre) {
     if (localidad.geom) zoomToGeometry(localidad.geom);
     
     // Cargar calles
-    const callesFiltradas = await loadFilteredPostGIS('calles', 'localidad', localidadNombre);
+    const callesResult = await loadFilteredPostGIS('calles', 'localidad', localidadNombre);
+    callesFiltradas = callesResult;
     layerGroups.calles.clearLayers();
     if (callesFiltradas.length > 0) {
         renderDataToLayer('calles', callesFiltradas);
@@ -766,6 +770,7 @@ async function aplicarFiltroLocalidad(localidadNombre) {
     const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros`;
     showStatus(summary, 'success');
     actualizarIndicadoresSiAbierto();
+    if (callesFiltradas.length > 0) mostrarBuscadorCalles();
 }
 
 async function applyUnidadRegionalFilter() {
@@ -934,6 +939,8 @@ function clearFilter() {
     if (layerGroups.red_de_gas) layerGroups.red_de_gas.clearLayers();
     if (layerGroups.calles) layerGroups.calles.clearLayers();
     if (layerGroups.suministros) layerGroups.suministros.clearLayers();
+    callesFiltradas = [];
+    ocultarBuscadorCalles();
     
     // Volver a renderizar todos los suministros (sin filtro)
     if (suministrosData.length > 0) {
@@ -1039,9 +1046,116 @@ function initSearchPanel() {
     const input = document.getElementById('searchInput');
     if (searchBtn) searchBtn.addEventListener('click', buscarSuministro);
     if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') buscarSuministro(); });
-    
+
+    const callesBtn   = document.getElementById('callesSearchBtn');
+    const callesInput = document.getElementById('callesSearchInput');
+    const callesClear = document.getElementById('callesClearBtn');
+    if (callesBtn)   callesBtn.addEventListener('click', buscarCalle);
+    if (callesInput) callesInput.addEventListener('keydown', e => { if (e.key === 'Enter') buscarCalle(); });
+    if (callesClear) callesClear.addEventListener('click', () => {
+        if (callesInput) callesInput.value = '';
+        const r = document.getElementById('callesSearchResults');
+        if (r) r.innerHTML = '';
+        if (callesInput) callesInput.focus();
+    });
+
     // Panel de indicadores
     initIndicadoresPanel();
+}
+
+// ================================================================
+// BUSCADOR DE CALLES
+// ================================================================
+
+function mostrarBuscadorCalles() {
+    const section = document.getElementById('buscarCallesSection');
+    if (section) section.style.display = 'block';
+    const input = document.getElementById('callesSearchInput');
+    if (input) input.value = '';
+    document.getElementById('callesSearchResults').innerHTML = '';
+
+    // Poblar datalist con nombres únicos ordenados
+    const datalist = document.getElementById('callesSuggestions');
+    if (datalist) {
+        datalist.innerHTML = '';
+        const nombresUnicos = [...new Set(
+            callesFiltradas.map(c => c.name).filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b));
+        nombresUnicos.forEach(nombre => {
+            const option = document.createElement('option');
+            option.value = nombre;
+            datalist.appendChild(option);
+        });
+    }
+}
+
+function ocultarBuscadorCalles() {
+    const section = document.getElementById('buscarCallesSection');
+    if (section) section.style.display = 'none';
+    const input = document.getElementById('callesSearchInput');
+    if (input) input.value = '';
+    const results = document.getElementById('callesSearchResults');
+    if (results) results.innerHTML = '';
+}
+
+function buscarCalle() {
+    const input  = document.getElementById('callesSearchInput');
+    const resultsDiv = document.getElementById('callesSearchResults');
+    if (!input || !resultsDiv) return;
+
+    const texto = input.value.trim().toLowerCase();
+    if (!texto) { resultsDiv.innerHTML = '<div class="search-no-results">Ingresá un nombre de calle.</div>'; return; }
+    if (callesFiltradas.length === 0) { resultsDiv.innerHTML = '<div class="search-no-results">Primero filtrá un Área de Servicio.</div>'; return; }
+
+    // El campo de nombre de calles es 'name' según createCallesPopup
+    const encontradas = [...new Map(
+        callesFiltradas
+            .filter(c => c.name && c.name.toLowerCase().includes(texto))
+            .map(c => [c.name.toLowerCase(), c])
+    ).values()];
+
+    if (encontradas.length === 0) {
+        resultsDiv.innerHTML = '<div class="search-no-results">Sin resultados para "' + texto + '".</div>';
+        return;
+    }
+
+    resultsDiv.innerHTML = '';
+    encontradas.slice(0, 15).forEach(calle => {
+        const div = document.createElement('div');
+        div.className = 'search-result-item';
+        div.innerHTML = `<div class="result-main">〽 ${calle.name}</div>
+            <div class="result-sub">${calle.fclass ? 'Tipo: ' + calle.fclass : ''}</div>`;
+        div.addEventListener('click', () => zoomACalle(calle));
+        resultsDiv.appendChild(div);
+    });
+    if (encontradas.length > 15) {
+        resultsDiv.innerHTML += `<div class="search-no-results">Mostrando 15 de ${encontradas.length} calles.</div>`;
+    }
+}
+
+function zoomACalle(calle) {
+    const geom = calle.wkt_geom || calle.geom || calle.the_geom;
+    if (!geom) return;
+    try {
+        const gj = typeof geom === 'string' ? wktToGeoJSON(geom) : geom;
+        if (!gj) return;
+        const tempLayer = L.geoJSON(gj);
+        const bounds = tempLayer.getBounds();
+        if (bounds && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+        }
+        // Resaltar todas las features del mismo nombre en la capa calles
+        layerGroups.calles.eachLayer(function(geoJsonLayer) {
+            geoJsonLayer.eachLayer(function(lineLayer) {
+                const props = lineLayer.feature && lineLayer.feature.properties;
+                if (props && props.name === calle.name) {
+                    const originalStyle = { color: '#e8a838', weight: 2, opacity: 0.8 };
+                    lineLayer.setStyle({ color: '#ff0000', weight: 5, opacity: 1 });
+                    setTimeout(() => lineLayer.setStyle(originalStyle), 2500);
+                }
+            });
+        });
+    } catch(e) { console.error('Error zoom calle:', e); }
 }
 
 function buscarSuministro() {
@@ -1104,15 +1218,29 @@ function zoomASuministro(item) {
     if (typeof geom === 'object' && geom.coordinates) coords = geom.coordinates;
     else if (typeof geom === 'string') { const gj = wktToGeoJSON(geom); if (gj && gj.coordinates) coords = gj.coordinates; }
     if (!coords) return;
+
     const latlng = L.latLng(coords[1], coords[0]);
     map.setView(latlng, 18);
+
+    // Resaltar el punto en la capa
+    // Usamos coordenadas como identificador principal (siempre disponibles),
+    // con medidor como confirmación secundaria cuando existe
+    let encontrado = false;
     layerGroups.suministros.eachLayer(function(geoJsonLayer) {
+        if (encontrado) return;
         geoJsonLayer.eachLayer(function(circleLayer) {
-            const props = circleLayer.feature && circleLayer.feature.properties;
-            if (props && String(props.medidor) === String(item.medidor)) {
+            if (encontrado) return;
+            if (!circleLayer.getLatLng) return;
+            const cl = circleLayer.getLatLng();
+            // Tolerancia de 5 metros para cubrir imprecisiones de punto flotante
+            const coincide = cl.distanceTo(latlng) < 5;
+            if (coincide) {
+                encontrado = true;
                 setTimeout(() => {
-                    const colorOriginal = circleLayer.options.fillColor, borderOriginal = circleLayer.options.color, radioOriginal = circleLayer.options.radius;
-                    circleLayer.setStyle({ fillColor: '#ffffff', color: '#0000ff', weight: 3, radius: 12, fillOpacity: 0.9 });
+                    const colorOriginal = circleLayer.options.fillColor;
+                    const borderOriginal = circleLayer.options.color;
+                    const radioOriginal  = circleLayer.options.radius;
+                    circleLayer.setStyle({ fillColor: '#ffffff', color: '#0000ff', weight: 3, fillOpacity: 0.9 });
                     circleLayer.setRadius(12);
                     circleLayer.openPopup();
                     setTimeout(() => {
@@ -1123,8 +1251,6 @@ function zoomASuministro(item) {
             }
         });
     });
-    const searchPanel = document.getElementById('searchPanel');
-    if (searchPanel) searchPanel.classList.remove('open');
 }
 
 // ================================================================

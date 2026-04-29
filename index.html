@@ -83,6 +83,18 @@
             </label>
         </div>
 
+        <!-- Buscador de calles (visible solo con filtro activo) -->
+        <div class="filter-section" id="buscarCallesSection" style="display:none;">
+            <h3>〽 Buscar Calle</h3>
+            <input type="text" id="callesSearchInput" placeholder="Nombre de calle..." list="callesSuggestions" autocomplete="off">
+            <datalist id="callesSuggestions"></datalist>
+            <div style="display:flex; gap:6px;">
+                <button id="callesSearchBtn" style="flex:1;">Buscar</button>
+                <button id="callesClearBtn" class="filter-btn clear" style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+            </div>
+            <div id="callesSearchResults"></div>
+        </div>
+
         <div class="layer-item">
             <label id="label-suministros">
                 <input type="checkbox" id="layer-suministros" data-table="suministros" disabled>

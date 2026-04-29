@@ -510,7 +510,8 @@ select {
 /* BÚSQUEDA EN SIDEBAR            */
 /* ============================== */
 
-#searchSidebarSection input[type="text"] {
+#searchSidebarSection input[type="text"],
+#buscarCallesSection input[type="text"] {
     width: 100%;
     padding: 7px;
     margin: 4px 0;
