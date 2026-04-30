@@ -111,7 +111,10 @@
                 <option value="Cliente">Cliente</option>
             </select>
             <input type="text" id="searchInput" placeholder="Ingrese texto a buscar...">
-            <button id="searchBtn">Buscar</button>
+            <div style="display:flex; gap:6px;">
+                <button id="searchBtn" style="flex:1;">Buscar</button>
+                <button id="searchClearBtn" class="filter-btn clear" style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+            </div>
             <div id="searchResults"></div>
         </div>
     </div>

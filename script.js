@@ -102,6 +102,30 @@ function initMap() {
     L.control.layers(baseMaps, null, { position: 'topleft' }).addTo(map);
     
     console.log('Capas base y controles agregados');
+
+    // ── Copiar coordenadas con clic derecho ──────────────────────────────
+    map.on('contextmenu', function(e) {
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+        const coordText = `${lat}, ${lng}`;
+
+        // Copiar al portapapeles
+        navigator.clipboard.writeText(coordText).then(() => {
+            // Mostrar tooltip flotante en el punto del clic
+            const popup = L.popup({ closeButton: false, className: 'coords-popup' })
+                .setLatLng(e.latlng)
+                .setContent(`📋 Copiado: <strong>${coordText}</strong>`)
+                .openOn(map);
+
+            setTimeout(() => { map.closePopup(popup); }, 2000);
+        }).catch(() => {
+            // Fallback para navegadores sin clipboard API
+            const popup = L.popup({ closeButton: true, className: 'coords-popup' })
+                .setLatLng(e.latlng)
+                .setContent(`📍 Coordenadas:<br><strong>${coordText}</strong>`)
+                .openOn(map);
+        });
+    });
 }
 
 function initStyles() {
@@ -1044,8 +1068,15 @@ function actualizarColorPuntoByMedidor(medidor) {
 function initSearchPanel() {
     const searchBtn = document.getElementById('searchBtn');
     const input = document.getElementById('searchInput');
+    const searchClearBtn = document.getElementById('searchClearBtn');
     if (searchBtn) searchBtn.addEventListener('click', buscarSuministro);
     if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') buscarSuministro(); });
+    if (searchClearBtn) searchClearBtn.addEventListener('click', () => {
+        if (input) input.value = '';
+        const r = document.getElementById('searchResults');
+        if (r) r.innerHTML = '';
+        if (input) input.focus();
+    });
 
     const callesBtn   = document.getElementById('callesSearchBtn');
     const callesInput = document.getElementById('callesSearchInput');
@@ -1204,11 +1235,22 @@ function renderResultItem(item, container, otraLocalidad = null) {
     const div = document.createElement('div');
     div.className = 'search-result-item';
     div.innerHTML = `<div class="result-main">${item.Nombre || item.medidor || '-'}</div>
-        <div class="result-sub">🔢 Medidor: ${item.medidor || '-'} | Estado: ${item.estado || '-'}</div>
-        <div class="result-sub">🚚 Ruta: <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span> | 🔢 Orden: ${orden}</div>
+        <div class="result-sub">🔢 Medidor: ${item.medidor || '-'} | Cliente: ${item.Cliente || '-'} | Estado: ${item.estado || '-'}</div>
+        <div class="result-sub">📭 Ruta: <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span> | 🔜 Orden: ${orden}</div>
         <div class="result-sub">📍 ${item.Direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>`;
     div.addEventListener('click', () => zoomASuministro(item));
     container.appendChild(div);
+}
+
+// Estado del resaltado activo de suministro buscado
+let _highlightRestore   = null;  // función para restaurar el estilo original
+let _highlightTimer     = null;  // timeout de auto-restauración (15 s)
+let _highlightMapClick  = null;  // handler de clic en mapa para dismissal
+
+function _cancelarResaltadoSuministro() {
+    if (_highlightTimer)    { clearTimeout(_highlightTimer);          _highlightTimer    = null; }
+    if (_highlightMapClick) { map.off('click', _highlightMapClick);   _highlightMapClick = null; }
+    if (_highlightRestore)  { _highlightRestore();                    _highlightRestore  = null; }
 }
 
 function zoomASuministro(item) {
@@ -1222,33 +1264,56 @@ function zoomASuministro(item) {
     const latlng = L.latLng(coords[1], coords[0]);
     map.setView(latlng, 18);
 
-    // Resaltar el punto en la capa
-    // Usamos coordenadas como identificador principal (siempre disponibles),
-    // con medidor como confirmación secundaria cuando existe
+    // Cancelar cualquier resaltado previo antes de aplicar el nuevo
+    _cancelarResaltadoSuministro();
+
+    const medidorBuscado = item.medidor != null ? String(item.medidor) : null;
+
     let encontrado = false;
     layerGroups.suministros.eachLayer(function(geoJsonLayer) {
         if (encontrado) return;
         geoJsonLayer.eachLayer(function(circleLayer) {
             if (encontrado) return;
             if (!circleLayer.getLatLng) return;
-            const cl = circleLayer.getLatLng();
-            // Tolerancia de 5 metros para cubrir imprecisiones de punto flotante
-            const coincide = cl.distanceTo(latlng) < 5;
-            if (coincide) {
-                encontrado = true;
+
+            // Coincidencia preferida: medidor (único, robusto ante diferencias de precisión)
+            // Fallback: distancia de coordenadas < 5 m
+            const props = circleLayer.feature && circleLayer.feature.properties;
+            const coincideMedidor = medidorBuscado && props && String(props.medidor) === medidorBuscado;
+            const coincideCoords  = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
+            if (!coincideMedidor && !coincideCoords) return;
+
+            encontrado = true;
+            setTimeout(() => {
+                const colorOriginal  = circleLayer.options.fillColor;
+                const borderOriginal = circleLayer.options.color;
+                const weightOriginal = circleLayer.options.weight;
+                const opacOriginal   = circleLayer.options.fillOpacity;
+                const radioOriginal  = circleLayer.options.radius;
+
+                // Aplicar resaltado: círculo blanco con borde azul intenso
+                circleLayer.setStyle({ fillColor: '#ffffff', color: '#1565C0', weight: 3.5, fillOpacity: 0.95 });
+                circleLayer.setRadius(14);
+                circleLayer.openPopup();
+
+                // Restaurar estilo original
+                _highlightRestore = () => {
+                    circleLayer.setStyle({ fillColor: colorOriginal, color: borderOriginal, weight: weightOriginal, fillOpacity: opacOriginal });
+                    circleLayer.setRadius(radioOriginal || 4);
+                    map.closePopup();
+                };
+
+                // Auto-limpiar tras 15 segundos
+                _highlightTimer = setTimeout(_cancelarResaltadoSuministro, 15000);
+
+                // Limpiar al hacer clic en cualquier parte del mapa
+                // Pequeño delay para que el mismo clic de apertura no lo cancele inmediatamente
                 setTimeout(() => {
-                    const colorOriginal = circleLayer.options.fillColor;
-                    const borderOriginal = circleLayer.options.color;
-                    const radioOriginal  = circleLayer.options.radius;
-                    circleLayer.setStyle({ fillColor: '#ffffff', color: '#0000ff', weight: 3, fillOpacity: 0.9 });
-                    circleLayer.setRadius(12);
-                    circleLayer.openPopup();
-                    setTimeout(() => {
-                        circleLayer.setStyle({ fillColor: colorOriginal, color: borderOriginal, weight: 1.5, fillOpacity: 0.85 });
-                        circleLayer.setRadius(radioOriginal || 4);
-                    }, 2500);
+                    _highlightMapClick = () => _cancelarResaltadoSuministro();
+                    map.once('click', _highlightMapClick);
                 }, 400);
-            }
+
+            }, 350);
         });
     });
 }

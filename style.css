@@ -867,3 +867,18 @@ select {
         max-height: 75vh;
     }
 }
+/* ── Popup de coordenadas (clic derecho) ─────────────────────────── */
+.coords-popup .leaflet-popup-content-wrapper {
+    background: rgba(30, 30, 30, 0.88);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 2px 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.coords-popup .leaflet-popup-tip {
+    background: rgba(30, 30, 30, 0.88);
+}
+.coords-popup .leaflet-popup-content {
+    margin: 6px 10px;
+}
