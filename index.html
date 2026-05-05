@@ -1,29 +1,30 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Geoportal - BAGSA</title>
-    
+
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-          crossorigin=""/>
-    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
     <!-- Estilos propios -->
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <!-- Botón para móvil -->
     <button id="mobileToggleBtn">☰</button>
-    
+
     <div id="sidebar">
         <h2>Geoportal BAGSA</h2>
-        
+
         <div id="status"></div>
-        
+
         <button id="loadDataBtn">Cargar Datos Base</button>
-        
+
         <!-- Filtro por Unidad Regional -->
         <div class="filter-section">
             <h3>Filtrar por Unidad Regional</h3>
@@ -35,12 +36,12 @@
             <button class="filter-btn clear" id="clearUnidadRegionalFilter" disabled>Limpiar</button>
         </div>
 
-        <!-- Lista de localidades de la unidad regional -->
+        <!-- Lista de localidades filtradas -->
         <div id="localidadesURContainer" style="display:none;">
-            <h3>Áreas de Servicio de la Unidad Regional</h3>
+            <h3 id="localidadesURTitle">Áreas de Servicio de la Unidad Regional</h3>
             <div id="localidadesURList"></div>
         </div>
-        
+
         <!-- Filtro por Localidad -->
         <div class="filter-section">
             <h3>Filtrar por Área de Servicio</h3>
@@ -50,32 +51,48 @@
             <button class="filter-btn" id="applyLocalidadFilter" disabled>Aplicar</button>
             <button class="filter-btn clear" id="clearLocalidadFilter" disabled>Limpiar</button>
         </div>
-        
+
+        <!-- Filtro por Producto y Turno -->
+        <div class="filter-section">
+            <h3>Filtrar por Producto / Turno</h3>
+            <select id="selectProducto" disabled>
+                <option value="">-- Seleccione Producto --</option>
+            </select>
+            <select id="selectTurno" disabled style="margin-top: 5px;">
+                <option value="">-- Seleccione Turno --</option>
+            </select>
+            <div style="display:flex; gap:6px; margin-top: 10px;">
+                <button class="filter-btn" id="applyProductoTurnoFilter" disabled style="flex:1;">Aplicar</button>
+                <button class="filter-btn clear" id="clearProductoTurnoFilter" disabled
+                    style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+            </div>
+        </div>
+
         <!-- El panel de ruteo se insertará dinámicamente aquí -->
-        
+
         <h3>Capas Disponibles</h3>
-        
+
         <div class="layer-item">
             <label>
                 <input type="checkbox" id="layer-municipios" data-table="municipios">
                 Municipios
             </label>
         </div>
-        
+
         <div class="layer-item">
             <label>
                 <input type="checkbox" id="layer-localidades" data-table="localidades">
                 Áreas de Servicio
             </label>
         </div>
-        
+
         <div class="layer-item">
             <label id="label-red_de_gas">
                 <input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" disabled>
                 Red de Gas (requiere filtro)
             </label>
         </div>
-        
+
         <div class="layer-item">
             <label id="label-calles">
                 <input type="checkbox" id="layer-calles" data-table="calles" disabled>
@@ -86,11 +103,16 @@
         <!-- Buscador de calles (visible solo con filtro activo) -->
         <div class="filter-section" id="buscarCallesSection" style="display:none;">
             <h3>〽 Buscar Calle</h3>
-            <input type="text" id="callesSearchInput" placeholder="Nombre de calle..." list="callesSuggestions" autocomplete="off">
+            <input type="text" id="callesSearchInput" placeholder="Nombre de calle..." list="callesSuggestions"
+                autocomplete="off">
             <datalist id="callesSuggestions"></datalist>
             <div style="display:flex; gap:6px;">
                 <button id="callesSearchBtn" style="flex:1;">Buscar</button>
-                <button id="callesClearBtn" class="filter-btn clear" style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+                <button id="downloadCallesBtn"
+                    style="flex:0 0 auto; background-color: #17a2b8; width:auto; padding:6px 10px;"
+                    title="Descargar Calles (CSV)">⬇️</button>
+                <button id="callesClearBtn" class="filter-btn clear"
+                    style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
             </div>
             <div id="callesSearchResults"></div>
         </div>
@@ -113,10 +135,15 @@
             <input type="text" id="searchInput" placeholder="Ingrese texto a buscar...">
             <div style="display:flex; gap:6px;">
                 <button id="searchBtn" style="flex:1;">Buscar</button>
-                <button id="searchClearBtn" class="filter-btn clear" style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+                <button id="searchClearBtn" class="filter-btn clear"
+                    style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
             </div>
             <div id="searchResults"></div>
         </div>
+
+        <!-- Descargar Reporte -->
+        <button id="downloadReportBtn" style="margin-top: 15px; width: 100%; background-color: #28a745;" disabled>⬇️
+            Descargar Reporte (CSV)</button>
     </div>
 
     <!-- Botón Indicadores -->
@@ -138,7 +165,7 @@
     <div id="map">
         <button id="toggleLegendBtn" style="display: none;">Diámetros de cañería</button>
     </div>
-    
+
     <div id="legend">
         <h4>Diámetros de Red de Gas</h4>
         <div class="legend-item">
@@ -166,19 +193,19 @@
             <div class="legend-label">Otros diámetros</div>
         </div>
     </div>
-    
+
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""></script>
-    
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+
     <!-- WKT Parser -->
     <script src="https://unpkg.com/wicket@1.3.8/wicket.js"></script>
-    
+
     <!-- Script principal -->
     <script src="script.js"></script>
 </body>
+
 </html>
