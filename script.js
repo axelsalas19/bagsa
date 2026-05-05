@@ -5,7 +5,7 @@ let localidadesData = [];
 let callesData = [];
 let redGasData = [];
 let suministrosData = [];   // Cache completo — nunca se limpia con clearFilter
-let callesFiltradas  = [];  // Calles de la localidad activa (para búsqueda)
+let callesFiltradas = [];  // Calles de la localidad activa (para búsqueda)
 let currentFilter = null;
 let map;
 let layerGroups;
@@ -13,22 +13,22 @@ let styles;
 let filteredStyle;
 
 // Variables módulo de ruteo
-let ruteoLayerGroup       = null;  // Capa de rutas en el mapa
-let ruteoSinAsignarLayer  = null;  // Capa de puntos sin asignar
-let suministrosConRuta    = [];    // Suministros con ruta+orden completos
-let suministrosSinRuta    = [];    // Suministros sin ruta o sin orden
-let borrador              = [];    // Cambios pendientes de confirmar
+let ruteoLayerGroup = null;  // Capa de rutas en el mapa
+let ruteoSinAsignarLayer = null;  // Capa de puntos sin asignar
+let suministrosConRuta = [];    // Suministros con ruta+orden completos
+let suministrosSinRuta = [];    // Suministros sin ruta o sin orden
+let borrador = [];    // Cambios pendientes de confirmar
 let suministrosBorradorMap = {};   // medidor → {ruta, orden} estado en borrador
-let modoEdicion           = false; // true cuando el usuario está asignando puntos
+let modoEdicion = false; // true cuando el usuario está asignando puntos
 let localidadFiltroActual = null;  // nombre de la localidad activa
-let rutasVisibles         = new Map(); // Para controlar qué rutas están visibles
-let capaRutasGroup        = null;  // Capa para las rutas visualizadas
+let rutasVisibles = new Map(); // Para controlar qué rutas están visibles
+let capaRutasGroup = null;  // Capa para las rutas visualizadas
 
 // Paleta de colores para rutas
 const RUTA_COLORES = [
-    '#e63946','#2a9d8f','#e9c46a','#f4a261','#6a4c93',
-    '#1982c4','#8ac926','#ff595e','#6a0572','#0077b6',
-    '#d90429','#2b2d42','#ffb703','#fb8500','#06d6a0'
+    '#e63946', '#2a9d8f', '#e9c46a', '#f4a261', '#6a4c93',
+    '#1982c4', '#8ac926', '#ff595e', '#6a0572', '#0077b6',
+    '#d90429', '#2b2d42', '#ffb703', '#fb8500', '#06d6a0'
 ];
 
 // Configuración
@@ -36,7 +36,7 @@ const SUPABASE_URL = 'https://ahuxvjoykgzimshlcjsb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFodXh2am95a2d6aW1zaGxjanNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwNDAxODcsImV4cCI6MjA4NTYxNjE4N30.oI32sXf5PoQIRg9wz6thjEFPngvw7FwzN4_hxHLM3m4';
 
 // Esperar a que todo esté cargado
-window.addEventListener('load', function() {
+window.addEventListener('load', function () {
     console.log('Iniciando aplicación...');
     initApp();
 });
@@ -46,13 +46,13 @@ function initApp() {
         const { createClient } = supabase;
         supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
         console.log('Supabase conectado');
-        
+
         initMap();
         initStyles();
         initLayerGroups();
         initEventListeners();
         initSearchPanel();
-        
+
     } catch (error) {
         console.error('Error inicializando la aplicación:', error);
         showStatus('Error al inicializar: ' + error.message, 'error');
@@ -62,49 +62,49 @@ function initApp() {
 function initMap() {
     map = L.map('map').setView([-36.14685, -60.28183], 6);
     console.log('Mapa inicializado');
-    
+
     // Capas base
     const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
     });
-    
+
     const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
         maxZoom: 19
     });
-    
+
     const argenmapLayer = L.tileLayer('https://wms.ign.gob.ar/geoserver/gwc/service/tms/1.0.0/mapabase_gris@EPSG%3A3857@png/{z}/{x}/{-y}.png', {
         attribution: '<a href="http://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> | <a href="http://www.ign.gob.ar/AreaServicios/Argenmap/IntroduccionV2" target="_blank">Instituto Geográfico Nacional</a> + <a href="http://www.osm.org/copyright" target="_blank">OpenStreetMap</a>',
         maxZoom: 19,
         tms: true
     });
-    
+
     const googleHybridLayer = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
         attribution: '&copy; <a href="https://www.google.com/maps">Google Maps</a>',
         maxZoom: 20,
         subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
     });
-    
+
     osmLayer.addTo(map);
-    
+
     const baseMaps = {
         "OpenStreetMap": osmLayer,
         "Satélite": satelliteLayer,
         "Google Híbrido": googleHybridLayer,
         "ArgenMap Gris": argenmapLayer
     };
-    
+
     // Agregar control de zoom
     L.control.zoom({ position: 'topleft' }).addTo(map);
-    
+
     // Agregar control de capas base
     L.control.layers(baseMaps, null, { position: 'topleft' }).addTo(map);
-    
+
     console.log('Capas base y controles agregados');
 
     // ── Copiar coordenadas con clic derecho ──────────────────────────────
-    map.on('contextmenu', function(e) {
+    map.on('contextmenu', function (e) {
         const lat = e.latlng.lat.toFixed(6);
         const lng = e.latlng.lng.toFixed(6);
         const coordText = `${lat}, ${lng}`;
@@ -135,7 +135,7 @@ function initStyles() {
         red_de_gas: { color: '#ff0000', weight: 2, opacity: 0.7 },
         calles: { color: '#333333', weight: 2, opacity: 0.6 }
     };
-    
+
     filteredStyle = {
         municipios: { color: '#232323', weight: 1, fillOpacity: 0.1, fillColor: '#ffffff' },
         localidades: { color: '#2466e9', weight: 2, fillOpacity: 0.2, fillColor: '#e3e6eb' }
@@ -151,13 +151,13 @@ function initLayerGroups() {
         suministros: L.layerGroup()
     };
 
-    map.on('zoomend', function() {
+    map.on('zoomend', function () {
         const zoom = map.getZoom();
         const radius = zoom >= 16 ? 6 : zoom >= 14 ? 5 : zoom >= 12 ? 4 : 3;
         if (layerGroups.suministros) {
-            layerGroups.suministros.eachLayer(function(layer) {
+            layerGroups.suministros.eachLayer(function (layer) {
                 if (layer.eachLayer) {
-                    layer.eachLayer(function(subLayer) {
+                    layer.eachLayer(function (subLayer) {
                         if (subLayer.setRadius) subLayer.setRadius(radius);
                     });
                 } else if (layer.setRadius) {
@@ -171,51 +171,55 @@ function initLayerGroups() {
 function initEventListeners() {
     const mobileToggleBtn = document.getElementById('mobileToggleBtn');
     const sidebar = document.getElementById('sidebar');
-    
+
     const sidebarOverlay = document.createElement('div');
     sidebarOverlay.id = 'sidebarOverlay';
     document.body.appendChild(sidebarOverlay);
-    
+
     if (mobileToggleBtn) {
-        mobileToggleBtn.addEventListener('click', function() {
+        mobileToggleBtn.addEventListener('click', function () {
             sidebar.classList.toggle('active');
             this.textContent = sidebar.classList.contains('active') ? '✕' : '☰';
             sidebarOverlay.classList.toggle('active');
         });
     }
-    
-    sidebarOverlay.addEventListener('click', function() {
+
+    sidebarOverlay.addEventListener('click', function () {
         sidebar.classList.remove('active');
         if (mobileToggleBtn) mobileToggleBtn.textContent = '☰';
         sidebarOverlay.classList.remove('active');
     });
-    
+
     document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
     });
-    
+
     const applyLocalidadFilterBtn = document.getElementById('applyLocalidadFilter');
     const applyUnidadRegionalFilterBtn = document.getElementById('applyUnidadRegionalFilter');
+    const applyProductoTurnoFilterBtn = document.getElementById('applyProductoTurnoFilter');
     const clearLocalidadFilterBtn = document.getElementById('clearLocalidadFilter');
     const clearUnidadRegionalFilterBtn = document.getElementById('clearUnidadRegionalFilter');
+    const clearProductoTurnoFilterBtn = document.getElementById('clearProductoTurnoFilter');
     const loadDataBtn = document.getElementById('loadDataBtn');
     const toggleLegendBtn = document.getElementById('toggleLegendBtn');
-    
+
     if (applyLocalidadFilterBtn) applyLocalidadFilterBtn.addEventListener('click', applyLocalidadFilter);
     if (applyUnidadRegionalFilterBtn) applyUnidadRegionalFilterBtn.addEventListener('click', applyUnidadRegionalFilter);
+    if (applyProductoTurnoFilterBtn) applyProductoTurnoFilterBtn.addEventListener('click', applyProductoTurnoFilter);
     if (clearLocalidadFilterBtn) clearLocalidadFilterBtn.addEventListener('click', clearFilter);
     if (clearUnidadRegionalFilterBtn) clearUnidadRegionalFilterBtn.addEventListener('click', clearFilter);
-    
+    if (clearProductoTurnoFilterBtn) clearProductoTurnoFilterBtn.addEventListener('click', clearFilter);
+
     if (loadDataBtn) {
-        loadDataBtn.addEventListener('click', async function() {
+        loadDataBtn.addEventListener('click', async function () {
             this.disabled = true;
             await loadBaseData();
             this.disabled = false;
         });
     }
-    
+
     if (toggleLegendBtn) {
-        toggleLegendBtn.addEventListener('click', function() {
+        toggleLegendBtn.addEventListener('click', function () {
             const legend = document.getElementById('legend');
             if (legend) {
                 if (legend.style.display === 'block') {
@@ -227,6 +231,16 @@ function initEventListeners() {
                 }
             }
         });
+    }
+
+    const downloadReportBtn = document.getElementById('downloadReportBtn');
+    if (downloadReportBtn) {
+        downloadReportBtn.addEventListener('click', descargarReporteCSV);
+    }
+
+    const downloadCallesBtn = document.getElementById('downloadCallesBtn');
+    if (downloadCallesBtn) {
+        downloadCallesBtn.addEventListener('click', descargarCallesCSV);
     }
 }
 
@@ -259,6 +273,12 @@ function wktToGeoJSON(wkt) {
     }
 }
 
+function getCopyBtn(text, label) {
+    if (!text) return '';
+    const safeText = String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return ` <span style="cursor:pointer;" onclick="navigator.clipboard.writeText('${safeText}'); showStatus('${label} copiado', 'success');" title="Copiar ${label}">📋</span>`;
+}
+
 function createMunicipioPopup(properties) {
     let content = `<strong>Municipio</strong><br>`;
     if (properties.fna) content += `<strong>Nombre:</strong> ${properties.fna}<br>`;
@@ -270,28 +290,54 @@ function createMunicipioPopup(properties) {
 function createSuministroPopup(properties) {
     const medidor = properties.medidor || '';
     const safeKey = medidor.toString().replace(/[^a-zA-Z0-9]/g, '_');
-    const ruta = properties.ruta;
-    const orden = properties.orden;
+
+    // Leer del borrador si existe
+    let ruta = properties.ruta;
+    let orden = properties.orden;
+    let esBorrador = false;
+
+    if (typeof suministrosBorradorMap !== 'undefined' && suministrosBorradorMap[medidor]) {
+        ruta = suministrosBorradorMap[medidor].ruta;
+        orden = suministrosBorradorMap[medidor].orden;
+        esBorrador = true;
+    }
+
     const tieneRuta = ruta && ruta !== null && ruta !== '';
     const tieneOrden = orden && orden !== null && orden !== 0;
-    
+
     let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
-    if (properties.medidor) content += `<strong>Num. Medidor:</strong> ${properties.medidor}<br>`;
-    if (properties.Cliente) content += `<strong>Cliente:</strong> ${properties.Cliente}<br>`;
-    if (properties.Nombre) content += `<strong>Nombre:</strong> ${properties.Nombre}<br>`;
-    if (properties.Direccion) content += `<strong>Dirección:</strong> ${properties.Direccion}<br>`;
+    if (properties.medidor) content += `<strong>Num. Medidor:</strong> ${properties.medidor}${getCopyBtn(properties.medidor, 'Medidor')}<br>`;
+    if (properties.Cliente) content += `<strong>Cliente:</strong> ${properties.Cliente}${getCopyBtn(properties.Cliente, 'Cliente')}<br>`;
+    if (properties.Nombre) content += `<strong>Nombre:</strong> ${properties.Nombre}${getCopyBtn(properties.Nombre, 'Nombre')}<br>`;
+    if (properties.Direccion) content += `<strong>Dirección:</strong> ${properties.Direccion}${getCopyBtn(properties.Direccion, 'Dirección')}<br>`;
     content += `<strong>Estado:</strong> ${properties.estado || '-'}<br>`;
-    
-    if (tieneRuta && tieneOrden) {
+
+    content += `<hr style="margin:8px 0; border-color:#ddd;">`;
+
+    content += `<div id="info-ruta-orden-${safeKey}">`;
+    if (tieneRuta && (orden !== null && orden !== '')) {
         const colorRuta = obtenerColorRuta(String(ruta));
-        content += `<strong>Ruta:</strong> <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span><br>`;
-        content += `<strong>Orden:</strong> <span style="color:#383838; font-weight:bold;">${orden}</span><br>`;
+        const lblRuta = esBorrador ? 'Ruta (Borrador):' : 'Ruta actual:';
+        content += `<strong>${lblRuta}</strong> <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span> | <strong>Orden:</strong> <span style="color:#383838; font-weight:bold;">${orden}</span><br>`;
     } else {
-        content += `<strong>Ruta:</strong> <span style="color:#ff9800;">No asignada</span><br>`;
-        content += `<strong>Orden:</strong> <span style="color:#ff9800;">No asignado</span><br>`;
+        content += `<strong>Ruta:</strong> <span style="color:#ff9800;">No asignada</span> | <strong>Orden:</strong> <span style="color:#ff9800;">No asignado</span><br>`;
     }
-    
+    content += `</div>`;
+
     content += `
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <div style="flex:1;">
+                <label style="font-size:11px; color:#555;">Nueva Ruta:</label>
+                <input type="text" id="ruta-input-${safeKey}" value="${ruta || ''}" style="width:100%; padding:4px; box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:11px; color:#555;">Nuevo Orden:</label>
+                <input type="number" id="orden-input-${safeKey}" value="${orden || ''}" min="1" style="width:100%; padding:4px; box-sizing:border-box;">
+            </div>
+        </div>
+        <button class="popup-save-btn" onclick="updateRutaOrden('${safeKey}', '${medidor}')" style="width:100%; margin-top:5px;">${esBorrador ? '📝 Actualizar' : '💾 Guardar'}</button>
+        <div id="popup-msg-ruta-${safeKey}" style="margin-top:5px; font-size:12px;"></div>
+        
         <hr style="margin:8px 0; border-color:#ddd;">
         <strong>Cambiar estado:</strong>
         <select id="estado-select-${safeKey}" style="margin:5px 0; padding:5px; width:100%;">
@@ -300,7 +346,7 @@ function createSuministroPopup(properties) {
             <option value="Anomalia" ${properties.estado === 'Anomalia' ? 'selected' : ''}>🟡 Anomalia</option>
         </select>
         <button class="popup-save-btn" onclick="updateEstado('${safeKey}', '${medidor}')" style="width:100%;">💾 Guardar Estado</button>
-        <div id="popup-msg-${safeKey}" style="margin-top:5px;"></div>
+        <div id="popup-msg-${safeKey}" style="margin-top:5px; font-size:12px;"></div>
     `;
     return content;
 }
@@ -365,11 +411,11 @@ async function loadTableData(tableName, options = {}) {
         const { limit } = options;
         console.log(`Cargando ${tableName}`);
         showStatus(`Cargando ${tableName}...`, 'loading');
-        
+
         let query = supabaseClient.from(tableName).select('*');
         const queryLimit = limit || 5000;
         query = query.limit(queryLimit);
-        
+
         const { data, error } = await query;
         if (error) throw error;
         if (!data || data.length === 0) {
@@ -408,13 +454,13 @@ function renderDataToLayer(tableName, data, style = null) {
     console.log(`Renderizando ${tableName} - ${data.length} elementos`);
     if (!layerGroups[tableName]) return 0;
     layerGroups[tableName].clearLayers();
-    
+
     let featuresAdded = 0;
-    
+
     data.forEach(item => {
         let geojson = null;
         const itemGeometry = item.wkt_geom || item.geom || item.the_geom;
-        
+
         if (itemGeometry) {
             const rawGeom = typeof itemGeometry === 'string' ? wktToGeoJSON(itemGeometry) : itemGeometry;
             if (rawGeom) {
@@ -427,7 +473,7 @@ function renderDataToLayer(tableName, data, style = null) {
                 }
             }
         }
-        
+
         if (geojson) {
             try {
                 const layerOptions = {
@@ -442,7 +488,7 @@ function renderDataToLayer(tableName, data, style = null) {
                         layer.bindPopup(popupContent);
                     }
                 };
-                
+
                 if (tableName === 'suministros') {
                     layerOptions.pointToLayer = (feature, latlng) => {
                         const ruta = item.ruta;
@@ -461,7 +507,7 @@ function renderDataToLayer(tableName, data, style = null) {
                         });
                     };
                 }
-                
+
                 const layer = L.geoJSON(geojson, layerOptions);
                 layerGroups[tableName].addLayer(layer);
                 featuresAdded++;
@@ -470,7 +516,7 @@ function renderDataToLayer(tableName, data, style = null) {
             }
         }
     });
-    
+
     console.log(`${tableName} - ${featuresAdded} elementos renderizados`);
     return featuresAdded;
 }
@@ -516,7 +562,7 @@ function renderRedGasWithDiameterClassification(data) {
     console.log(`Renderizando red de gas con clasificación - ${data.length} elementos`);
     if (!layerGroups.red_de_gas) return 0;
     layerGroups.red_de_gas.clearLayers();
-    
+
     let featuresAdded = 0;
     data.forEach(item => {
         let geojson = null;
@@ -547,7 +593,7 @@ function renderRedGasWithDiameterClassification(data) {
             }
         }
     });
-    
+
     console.log(`Red de gas: ${featuresAdded} elementos renderizados`);
     const toggleBtn = document.getElementById('toggleLegendBtn');
     if (toggleBtn && featuresAdded > 0) toggleBtn.style.display = 'block';
@@ -557,7 +603,7 @@ function renderRedGasWithDiameterClassification(data) {
 async function loadBaseData() {
     try {
         console.log('Iniciando carga de datos base');
-        
+
         municipiosData = await loadTableData('municipios', { limit: 200 });
         if (municipiosData.length > 0) {
             renderDataToLayer('municipios', municipiosData);
@@ -565,7 +611,7 @@ async function loadBaseData() {
             const cb = document.getElementById('layer-municipios');
             if (cb) { cb.checked = true; cb.disabled = false; }
         }
-        
+
         localidadesData = await loadTableData('localidades', { limit: 500 });
         if (localidadesData.length > 0) {
             renderDataToLayer('localidades', localidadesData);
@@ -575,8 +621,9 @@ async function loadBaseData() {
             const cb = document.getElementById('layer-localidades');
             if (cb) { cb.checked = true; cb.disabled = false; }
             populateUnidadRegionalSelect();
+            populateProductoTurnoSelects();
         }
-        
+
         suministrosData = await loadTableData('suministros', { limit: 10000 });
         console.log('📊 Suministros cargados en cache:', suministrosData.length);
         if (suministrosData.length > 0) {
@@ -593,7 +640,7 @@ async function loadBaseData() {
                 if (newCb) newCb.addEventListener('change', handleCheckboxChange);
             }
         }
-        
+
         showStatus('Datos base cargados. Seleccione un filtro para ver más información.', 'success');
         actualizarIndicadoresSiAbierto();
     } catch (error) {
@@ -646,7 +693,7 @@ function enableDependentLayers(filterName) {
     const redGasLabel = document.getElementById('label-red_de_gas');
     const callesLabel = document.getElementById('label-calles');
     const suministrosLabel = document.getElementById('label-suministros');
-    
+
     if (redGasLabel) {
         redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" checked> Red de Gas (${filterName})`;
         const cb = document.getElementById('layer-red_de_gas');
@@ -662,7 +709,7 @@ function enableDependentLayers(filterName) {
         const cb = document.getElementById('layer-suministros');
         if (cb) cb.addEventListener('change', handleCheckboxChange);
     }
-    
+
     setTimeout(() => {
         if (layerGroups.red_de_gas && !map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
         if (layerGroups.calles && !map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
@@ -674,7 +721,7 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
     try {
         console.log(`Cargando ${tableName} con PostGIS para ${filterType}: ${filterValue}`);
         let functionName, params = {};
-        
+
         if (filterType === 'localidad') {
             if (tableName === 'calles') functionName = 'get_streets_by_localidad';
             else if (tableName === 'red_de_gas') functionName = 'get_gas_network_by_localidad';
@@ -683,9 +730,9 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
         } else {
             return [];
         }
-        
+
         if (!functionName) return [];
-        
+
         const { data, error } = await supabaseClient.rpc(functionName, params).range(0, 9999);
         if (error) {
             console.error(`Error en RPC ${functionName}:`, error);
@@ -713,16 +760,16 @@ async function applyLocalidadFilter() {
 
 async function aplicarFiltroLocalidad(localidadNombre) {
     console.log('Aplicando filtro localidad...');
-    
+
     const localidad = localidadesData.find(l => l.nombre === localidadNombre);
     if (!localidad) {
         showStatus('Localidad no encontrada', 'error');
         return;
     }
-    
+
     const numFimm = localidad.num_fimm;
     console.log(`Localidad: ${localidadNombre}, num_fimm: ${numFimm}`);
-    
+
     currentFilter = {
         type: 'localidad',
         name: localidadNombre,
@@ -730,16 +777,16 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         geometry: localidad.geom,
         num_fimm: [numFimm]
     };
-    
+
     showStatus(`Filtrando ${localidadNombre}...`, 'loading');
     enableDependentLayers(localidadNombre);
-    
+
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', [localidad], filteredStyle.localidades);
     if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
     const cbLocalidades = document.getElementById('layer-localidades');
     if (cbLocalidades) { cbLocalidades.checked = true; cbLocalidades.disabled = false; }
-    
+
     const municipioPadre = municipiosData.find(m => m.nam === localidad.partido || m.nam === localidad.partido_ig);
     layerGroups.municipios.clearLayers();
     if (municipioPadre) {
@@ -748,9 +795,9 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         const cb = document.getElementById('layer-municipios');
         if (cb) { cb.checked = false; cb.disabled = false; }
     }
-    
+
     if (localidad.geom) zoomToGeometry(localidad.geom);
-    
+
     // Cargar calles
     const callesResult = await loadFilteredPostGIS('calles', 'localidad', localidadNombre);
     callesFiltradas = callesResult;
@@ -760,7 +807,7 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         if (!map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
         console.log(`✓ ${callesFiltradas.length} calles cargadas`);
     }
-    
+
     // Cargar red de gas
     const redGasFiltrada = await loadFilteredPostGIS('red_de_gas', 'localidad', localidadNombre);
     layerGroups.red_de_gas.clearLayers();
@@ -769,67 +816,73 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         if (!map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
         console.log(`✓ ${redGasFiltrada.length} red de gas cargada`);
     }
-    
+
     // Cargar suministros filtrando por num_fimm desde el cache
     console.log(`Filtrando suministros por Localidad = ${numFimm}`);
     const suministrosFiltrados = suministrosData.filter(s => s.Localidad === numFimm);
     console.log(`📊 Suministros encontrados en filtro: ${suministrosFiltrados.length}`);
-    
+
     if (suministrosFiltrados.length > 0) {
         console.log('📊 Muestra de suministros filtrados (primeros 3):', suministrosFiltrados.slice(0, 3).map(s => ({
             medidor: s.medidor, ruta: s.ruta, orden: s.orden, Localidad: s.Localidad
         })));
-        
+
         renderDataToLayer('suministros', suministrosFiltrados);
         if (!map.hasLayer(layerGroups.suministros)) layerGroups.suministros.addTo(map);
-        
+
         inicializarModuloRuteo(suministrosFiltrados, localidadNombre);
     } else {
         console.log('⚠️ No se encontraron suministros para esta localidad');
         limpiarModuloRuteo();
     }
-    
+
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
-    
+
     const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros`;
     showStatus(summary, 'success');
     actualizarIndicadoresSiAbierto();
     if (callesFiltradas.length > 0) mostrarBuscadorCalles();
+
+    const downloadBtn = document.getElementById('downloadReportBtn');
+    if (downloadBtn) downloadBtn.disabled = false;
+
+    const downloadCallesBtn = document.getElementById('downloadCallesBtn');
+    if (downloadCallesBtn) downloadCallesBtn.disabled = (callesFiltradas.length === 0);
 }
 
 async function applyUnidadRegionalFilter() {
     const selectUnidadRegional = document.getElementById('selectUnidadRegional');
     const unidadRegional = selectUnidadRegional.value;
-    
+
     if (!unidadRegional) {
         showStatus('Seleccione una unidad regional', 'error');
         return;
     }
-    
+
     console.log('Aplicando filtro por unidad regional:', unidadRegional);
     showStatus(`Filtrando por unidad regional: ${unidadRegional}...`, 'loading');
-    
+
     document.querySelectorAll('.filter-section').forEach(section => {
         section.classList.remove('active-filter');
     });
     selectUnidadRegional.closest('.filter-section').classList.add('active-filter');
-    
+
     currentFilter = {
         type: 'unidad_regional',
         name: unidadRegional,
         num_fimm: []
     };
-    
+
     const localidadesFiltradas = localidadesData.filter(l => l.unidad_regional === unidadRegional);
-    
+
     if (localidadesFiltradas.length === 0) {
         showStatus(`No se encontraron localidades para ${unidadRegional}`, 'error');
         return;
     }
-    
+
     console.log(`Localidades encontradas: ${localidadesFiltradas.length}`);
     currentFilter.num_fimm = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
-    
+
     layerGroups.localidades.clearLayers();
     renderDataToLayer('localidades', localidadesFiltradas, filteredStyle.localidades);
     if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
@@ -838,7 +891,7 @@ async function applyUnidadRegionalFilter() {
         localidadesCheckbox.checked = true;
         localidadesCheckbox.disabled = false;
     }
-    
+
     const municipiosUnicos = [...new Set(localidadesFiltradas.map(l => l.municipio))];
     const municipiosFiltrados = municipiosData.filter(m => municipiosUnicos.includes(m.municipio));
     layerGroups.municipios.clearLayers();
@@ -848,19 +901,20 @@ async function applyUnidadRegionalFilter() {
         const municipiosCheckbox = document.getElementById('layer-municipios');
         if (municipiosCheckbox) municipiosCheckbox.checked = false;
     }
-    
+
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
     habilitarCapasDependientesApagadas(unidadRegional);
-    
+
     // Cargar calles
     const callesUR = await loadFilteredPostGIS('calles', 'localidad', unidadRegional);
+    callesFiltradas = callesUR;
     layerGroups.calles.clearLayers();
-    if (callesUR.length > 0) {
-        renderDataToLayer('calles', callesUR);
+    if (callesFiltradas.length > 0) {
+        renderDataToLayer('calles', callesFiltradas);
         if (map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
-        console.log(`✓ ${callesUR.length} calles cargadas (apagadas)`);
+        console.log(`✓ ${callesFiltradas.length} calles cargadas (apagadas)`);
     }
-    
+
     // Cargar red de gas
     const redGasUR = await loadFilteredPostGIS('red_de_gas', 'localidad', unidadRegional);
     layerGroups.red_de_gas.clearLayers();
@@ -871,21 +925,29 @@ async function applyUnidadRegionalFilter() {
         document.getElementById('legend').style.display = 'none';
         console.log(`✓ ${redGasUR.length} red de gas cargada (apagada)`);
     }
-    
+
     // Cargar suministros filtrados por las localidades
     const numFimms = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
     const suministrosUR = suministrosData.filter(s => numFimms.includes(s.Localidad));
     console.log(`📊 Suministros encontrados: ${suministrosUR.length}`);
-    
+
     if (suministrosUR.length > 0) {
         renderDataToLayer('suministros', suministrosUR);
         if (map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
         inicializarModuloRuteo(suministrosUR, unidadRegional);
     }
-    
+
+    const containerTitle = document.getElementById('localidadesURTitle');
+    if (containerTitle) containerTitle.textContent = 'Áreas de Servicio de la Unidad Regional';
     mostrarListaLocalidadesUR(localidadesFiltradas);
     showStatus(`${localidadesFiltradas.length} localidades en ${unidadRegional}`, 'success');
     actualizarIndicadoresSiAbierto();
+
+    const downloadBtn = document.getElementById('downloadReportBtn');
+    if (downloadBtn) downloadBtn.disabled = false;
+
+    const downloadCallesBtn = document.getElementById('downloadCallesBtn');
+    if (downloadCallesBtn) downloadCallesBtn.disabled = (callesFiltradas.length === 0);
 }
 
 function habilitarCapasDependientesApagadas(filterName) {
@@ -919,25 +981,154 @@ function mostrarListaLocalidadesUR(localidades) {
     container.style.display = 'block';
 }
 
-function clearFilter() {
-    console.log('Limpiando filtro');
-    
-    currentFilter = null;
-    
-    const selectLocalidad = document.getElementById('selectLocalidad');
-    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
-    
-    if (selectLocalidad) selectLocalidad.value = '';
-    if (selectUnidadRegional) selectUnidadRegional.value = '';
-    
+function populateProductoTurnoSelects() {
+    const selectProducto = document.getElementById('selectProducto');
+    const selectTurno = document.getElementById('selectTurno');
+    if (!selectProducto || !selectTurno) return;
+
+    const productos = [...new Set(localidadesData.map(l => l.producto).filter(Boolean))].sort();
+    const turnos = [...new Set(localidadesData.map(l => l.turno).filter(Boolean))].sort();
+
+    selectProducto.innerHTML = '<option value="">-- Todos los Productos --</option>';
+    productos.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p;
+        option.textContent = p;
+        selectProducto.appendChild(option);
+    });
+
+    selectTurno.innerHTML = '<option value="">-- Todos los Turnos --</option>';
+    turnos.forEach(t => {
+        const option = document.createElement('option');
+        option.value = t;
+        option.textContent = t;
+        selectTurno.appendChild(option);
+    });
+
+    selectProducto.disabled = false;
+    selectTurno.disabled = false;
+    const applyBtn = document.getElementById('applyProductoTurnoFilter');
+    const clearBtn = document.getElementById('clearProductoTurnoFilter');
+    if (applyBtn) applyBtn.disabled = false;
+    if (clearBtn) clearBtn.disabled = false;
+}
+
+async function applyProductoTurnoFilter() {
+    const selectProducto = document.getElementById('selectProducto');
+    const selectTurno = document.getElementById('selectTurno');
+
+    const producto = selectProducto.value;
+    const turno = selectTurno.value;
+
+    if (!producto && !turno) {
+        showStatus('Seleccione al menos un tipo de producto o turno', 'error');
+        return;
+    }
+
+    console.log(`Aplicando filtro: Producto=${producto}, Turno=${turno}`);
+    showStatus('Filtrando áreas de servicio...', 'loading');
+
     document.querySelectorAll('.filter-section').forEach(section => {
         section.classList.remove('active-filter');
     });
-    
+    selectProducto.closest('.filter-section').classList.add('active-filter');
+
+    const localidadesFiltradas = localidadesData.filter(l => {
+        const matchProducto = !producto || l.producto === producto;
+        const matchTurno = !turno || l.turno === turno;
+        return matchProducto && matchTurno;
+    });
+
+    if (localidadesFiltradas.length === 0) {
+        showStatus('No se encontraron localidades con esos criterios', 'error');
+        return;
+    }
+
+    currentFilter = {
+        type: 'producto_turno',
+        name: `Prod: ${producto || 'Todos'} / Turno: ${turno || 'Todos'}`,
+        num_fimm: localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null)
+    };
+
+    layerGroups.localidades.clearLayers();
+    renderDataToLayer('localidades', localidadesFiltradas, filteredStyle.localidades);
+    if (!map.hasLayer(layerGroups.localidades)) layerGroups.localidades.addTo(map);
+    const localidadesCheckbox = document.getElementById('layer-localidades');
+    if (localidadesCheckbox) {
+        localidadesCheckbox.checked = true;
+        localidadesCheckbox.disabled = false;
+    }
+
+    const municipiosUnicos = [...new Set(localidadesFiltradas.map(l => l.municipio))];
+    const municipiosFiltrados = municipiosData.filter(m => municipiosUnicos.includes(m.municipio));
+    layerGroups.municipios.clearLayers();
+    if (municipiosFiltrados.length > 0) {
+        renderDataToLayer('municipios', municipiosFiltrados, filteredStyle.municipios);
+        if (map.hasLayer(layerGroups.municipios)) map.removeLayer(layerGroups.municipios);
+        const municipiosCheckbox = document.getElementById('layer-municipios');
+        if (municipiosCheckbox) municipiosCheckbox.checked = false;
+    }
+
+    setTimeout(() => fitViewToLayerGroup('localidades'), 500);
+    habilitarCapasDependientesApagadas(currentFilter.name);
+
+    // Limpiamos calles y red de gas porque abarcarían demasiadas localidades distintas
+    layerGroups.calles.clearLayers();
+    layerGroups.red_de_gas.clearLayers();
+
+    // Cargar suministros filtrados
+    const numFimms = currentFilter.num_fimm;
+    const suministrosFiltro = suministrosData.filter(s => numFimms.includes(s.Localidad));
+
+    if (suministrosFiltro.length > 0) {
+        renderDataToLayer('suministros', suministrosFiltro);
+        if (map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
+        inicializarModuloRuteo(suministrosFiltro, currentFilter.name);
+    }
+
+    const containerTitle = document.getElementById('localidadesURTitle');
+    if (containerTitle) containerTitle.textContent = 'Áreas de Servicio Filtradas';
+    mostrarListaLocalidadesUR(localidadesFiltradas);
+
+    showStatus(`${localidadesFiltradas.length} localidades encontradas`, 'success');
+    actualizarIndicadoresSiAbierto();
+
+    const downloadBtn = document.getElementById('downloadReportBtn');
+    if (downloadBtn) downloadBtn.disabled = false;
+
+    const downloadCallesBtn = document.getElementById('downloadCallesBtn');
+    if (downloadCallesBtn) downloadCallesBtn.disabled = true;
+}
+
+function clearFilter() {
+    console.log('Limpiando filtro');
+
+    currentFilter = null;
+
+    const downloadBtn = document.getElementById('downloadReportBtn');
+    if (downloadBtn) downloadBtn.disabled = true;
+
+    const downloadCallesBtn = document.getElementById('downloadCallesBtn');
+    if (downloadCallesBtn) downloadCallesBtn.disabled = true;
+
+    const selectLocalidad = document.getElementById('selectLocalidad');
+    const selectUnidadRegional = document.getElementById('selectUnidadRegional');
+    const selectProducto = document.getElementById('selectProducto');
+    const selectTurno = document.getElementById('selectTurno');
+
+    if (selectLocalidad) selectLocalidad.value = '';
+    if (selectUnidadRegional) selectUnidadRegional.value = '';
+    if (selectProducto) selectProducto.value = '';
+    if (selectTurno) selectTurno.value = '';
+
+    document.querySelectorAll('.filter-section').forEach(section => {
+        section.classList.remove('active-filter');
+    });
+
     const redGasLabel = document.getElementById('label-red_de_gas');
     const callesLabel = document.getElementById('label-calles');
     const suministrosLabel = document.getElementById('label-suministros');
-    
+
     if (redGasLabel) {
         redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" disabled> Red de Gas (requiere filtro)`;
     }
@@ -947,47 +1138,47 @@ function clearFilter() {
     if (suministrosLabel) {
         suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" disabled> Suministros (requiere filtro)`;
     }
-    
+
     const redGasCheckbox = document.getElementById('layer-red_de_gas');
     const callesCheckbox = document.getElementById('layer-calles');
     const suministrosCheckbox = document.getElementById('layer-suministros');
-    
+
     if (redGasCheckbox) { redGasCheckbox.checked = false; redGasCheckbox.disabled = true; }
     if (callesCheckbox) { callesCheckbox.checked = false; callesCheckbox.disabled = true; }
     if (suministrosCheckbox) { suministrosCheckbox.checked = false; suministrosCheckbox.disabled = true; }
-    
+
     if (layerGroups.red_de_gas && map.hasLayer(layerGroups.red_de_gas)) map.removeLayer(layerGroups.red_de_gas);
     if (layerGroups.calles && map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
     if (layerGroups.suministros && map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
-    
+
     if (layerGroups.red_de_gas) layerGroups.red_de_gas.clearLayers();
     if (layerGroups.calles) layerGroups.calles.clearLayers();
     if (layerGroups.suministros) layerGroups.suministros.clearLayers();
     callesFiltradas = [];
     ocultarBuscadorCalles();
-    
+
     // Volver a renderizar todos los suministros (sin filtro)
     if (suministrosData.length > 0) {
         renderDataToLayer('suministros', suministrosData);
     }
-    
+
     if (municipiosData.length > 0) renderDataToLayer('municipios', municipiosData);
     if (localidadesData.length > 0) renderDataToLayer('localidades', localidadesData);
-    
+
     if (!map.hasLayer(layerGroups.municipios)) layerGroups.municipios.addTo(map);
-    
+
     const municipiosCheckbox = document.getElementById('layer-municipios');
     if (municipiosCheckbox) municipiosCheckbox.checked = true;
-    
+
     document.getElementById('toggleLegendBtn').style.display = 'none';
     document.getElementById('legend').style.display = 'none';
-    
+
     const localidadesURContainer = document.getElementById('localidadesURContainer');
     if (localidadesURContainer) {
         localidadesURContainer.style.display = 'none';
         document.getElementById('localidadesURList').innerHTML = '';
     }
-    
+
     limpiarModuloRuteo();
     map.setView([-36.14685, -60.28183], 6);
     showStatus('Filtro limpiado', 'success');
@@ -996,13 +1187,13 @@ function clearFilter() {
 function handleCheckboxChange() {
     const tableName = this.dataset.table;
     const isChecked = this.checked;
-    
+
     if (isChecked) {
         if (layerGroups[tableName] && !map.hasLayer(layerGroups[tableName])) layerGroups[tableName].addTo(map);
     } else {
         if (layerGroups[tableName] && map.hasLayer(layerGroups[tableName])) map.removeLayer(layerGroups[tableName]);
     }
-    
+
     if (tableName === 'red_de_gas') {
         const toggleBtn = document.getElementById('toggleLegendBtn');
         const legend = document.getElementById('legend');
@@ -1022,22 +1213,22 @@ async function updateEstado(safeKey, medidor) {
     const select = document.getElementById(`estado-select-${safeKey}`);
     const msgDiv = document.getElementById(`popup-msg-${safeKey}`);
     if (!select || !msgDiv) return;
-    
+
     const nuevoEstado = select.value;
     msgDiv.innerHTML = '⏳ Guardando...';
     msgDiv.style.color = '#856404';
-    
+
     try {
         const { error } = await supabaseClient
             .from('suministros')
             .update({ estado: nuevoEstado })
             .eq('medidor', parseInt(medidor, 10));
-        
+
         if (error) throw error;
-        
+
         const item = suministrosData.find(s => String(s.medidor) === String(medidor));
         if (item) item.estado = nuevoEstado;
-        
+
         actualizarColorPuntoByMedidor(medidor);
         msgDiv.innerHTML = '✅ Guardado correctamente';
         msgDiv.style.color = '#155724';
@@ -1048,9 +1239,96 @@ async function updateEstado(safeKey, medidor) {
     }
 }
 
+async function updateRutaOrden(safeKey, medidor) {
+    const rutaInput = document.getElementById(`ruta-input-${safeKey}`);
+    const ordenInput = document.getElementById(`orden-input-${safeKey}`);
+    const msgDiv = document.getElementById(`popup-msg-ruta-${safeKey}`);
+    if (!rutaInput || !ordenInput || !msgDiv) return;
+
+    const nuevaRuta = rutaInput.value.trim();
+    const nuevoOrden = parseInt(ordenInput.value, 10);
+
+    if (!nuevaRuta || isNaN(nuevoOrden) || nuevoOrden < 1) {
+        msgDiv.innerHTML = '❌ Ingrese ruta y orden válidos';
+        msgDiv.style.color = '#721c24';
+        return;
+    }
+
+    try {
+        const suministro = suministrosData.find(s => String(s.medidor) === String(medidor));
+        if (!suministro) throw new Error('Suministro no encontrado');
+
+        // Agregar al borrador usando la lógica existente del módulo de ruteo
+        desplazarOrdenEnBorrador(String(nuevaRuta), nuevoOrden, medidor);
+
+        const entrada = {
+            medidor,
+            rutaAnterior: suministro.ruta ?? null,
+            ordenAnterior: suministro.orden ?? null,
+            rutaNueva: String(nuevaRuta),
+            ordenNuevo: nuevoOrden
+        };
+
+        const existente = borrador.findIndex(b => String(b.medidor) === String(medidor));
+        if (existente >= 0) borrador[existente] = entrada;
+        else borrador.push(entrada);
+
+        suministrosBorradorMap[medidor] = { ruta: String(nuevaRuta), orden: nuevoOrden };
+
+        // Si el suministro no tenía ruta, moverlo a suministrosConRuta en memoria
+        const idxSinRuta = suministrosSinRuta.findIndex(s => String(s.medidor) === String(medidor));
+        if (idxSinRuta >= 0) {
+            const s = suministrosSinRuta.splice(idxSinRuta, 1)[0];
+            s.ruta = String(nuevaRuta);
+            s.orden = nuevoOrden;
+            suministrosConRuta.push(s);
+            if (!rutasVisibles.has(String(nuevaRuta))) {
+                rutasVisibles.set(String(nuevaRuta), true);
+            }
+            renderPuntosSinAsignar();
+        } else {
+            // Asegurar que exista en la memoria del borrador de conRuta
+            const sConRuta = suministrosConRuta.find(s => String(s.medidor) === String(medidor));
+            if (!sConRuta && suministro.ruta) {
+                suministrosConRuta.push({ ...suministro });
+            }
+        }
+
+        // Actualizar visualmente el punto original y repintar panel
+        actualizarColorPuntoByMedidor(medidor);
+        // Refrescar todos los colores por si hubo desplazamientos
+        layerGroups.suministros.eachLayer(function (geoJsonLayer) {
+            geoJsonLayer.eachLayer(function (circleLayer) {
+                if (circleLayer.feature && circleLayer.feature.properties && circleLayer.feature.properties.medidor) {
+                    actualizarColorPuntoByMedidor(circleLayer.feature.properties.medidor);
+                }
+            });
+        });
+
+        renderPanelRuteo();
+
+        msgDiv.innerHTML = `✅ En borrador (Ruta ${nuevaRuta}, Orden ${nuevoOrden})`;
+        msgDiv.style.color = '#856404';
+
+        // Actualizar el UI del popup
+        const colorRuta = obtenerColorRuta(String(nuevaRuta));
+        const infoDiv = document.getElementById(`info-ruta-orden-${safeKey}`);
+        if (infoDiv) {
+            infoDiv.innerHTML = `<strong>Ruta (Borrador):</strong> <span style="color:${colorRuta}; font-weight:bold;">${nuevaRuta}</span> | <strong>Orden:</strong> <span style="color:#383838; font-weight:bold;">${nuevoOrden}</span><br>`;
+        }
+        const btn = document.querySelector(`#ruta-input-${safeKey}`).parentElement.parentElement.nextElementSibling;
+        if (btn) btn.textContent = '📝 Actualizar Borrador';
+
+    } catch (err) {
+        console.error('Error al agregar a borrador:', err);
+        msgDiv.innerHTML = '❌ ' + (err.message || 'Error');
+        msgDiv.style.color = '#721c24';
+    }
+}
+
 function actualizarColorPuntoByMedidor(medidor) {
-    layerGroups.suministros.eachLayer(function(geoJsonLayer) {
-        geoJsonLayer.eachLayer(function(circleLayer) {
+    layerGroups.suministros.eachLayer(function (geoJsonLayer) {
+        geoJsonLayer.eachLayer(function (circleLayer) {
             const props = circleLayer.feature && circleLayer.feature.properties;
             if (props && String(props.medidor) === String(medidor)) {
                 const ruta = props.ruta;
@@ -1078,15 +1356,16 @@ function initSearchPanel() {
         if (input) input.focus();
     });
 
-    const callesBtn   = document.getElementById('callesSearchBtn');
+    const callesBtn = document.getElementById('callesSearchBtn');
     const callesInput = document.getElementById('callesSearchInput');
     const callesClear = document.getElementById('callesClearBtn');
-    if (callesBtn)   callesBtn.addEventListener('click', buscarCalle);
+    if (callesBtn) callesBtn.addEventListener('click', buscarCalle);
     if (callesInput) callesInput.addEventListener('keydown', e => { if (e.key === 'Enter') buscarCalle(); });
     if (callesClear) callesClear.addEventListener('click', () => {
         if (callesInput) callesInput.value = '';
         const r = document.getElementById('callesSearchResults');
         if (r) r.innerHTML = '';
+        if (typeof limpiarSeleccionCalles === 'function') limpiarSeleccionCalles();
         if (callesInput) callesInput.focus();
     });
 
@@ -1127,10 +1406,11 @@ function ocultarBuscadorCalles() {
     if (input) input.value = '';
     const results = document.getElementById('callesSearchResults');
     if (results) results.innerHTML = '';
+    if (typeof limpiarSeleccionCalles === 'function') limpiarSeleccionCalles();
 }
 
 function buscarCalle() {
-    const input  = document.getElementById('callesSearchInput');
+    const input = document.getElementById('callesSearchInput');
     const resultsDiv = document.getElementById('callesSearchResults');
     if (!input || !resultsDiv) return;
 
@@ -1164,6 +1444,20 @@ function buscarCalle() {
     }
 }
 
+function limpiarSeleccionCalles() {
+    if (layerGroups && layerGroups.calles) {
+        layerGroups.calles.eachLayer(function (geoJsonLayer) {
+            if (geoJsonLayer.eachLayer) {
+                geoJsonLayer.eachLayer(function (lineLayer) {
+                    lineLayer.setStyle({ color: '#333333', weight: 2, opacity: 0.6 });
+                });
+            } else if (geoJsonLayer.setStyle) {
+                geoJsonLayer.setStyle({ color: '#333333', weight: 2, opacity: 0.6 });
+            }
+        });
+    }
+}
+
 function zoomACalle(calle) {
     const geom = calle.wkt_geom || calle.geom || calle.the_geom;
     if (!geom) return;
@@ -1176,17 +1470,17 @@ function zoomACalle(calle) {
             map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
         }
         // Resaltar todas las features del mismo nombre en la capa calles
-        layerGroups.calles.eachLayer(function(geoJsonLayer) {
-            geoJsonLayer.eachLayer(function(lineLayer) {
+        layerGroups.calles.eachLayer(function (geoJsonLayer) {
+            geoJsonLayer.eachLayer(function (lineLayer) {
                 const props = lineLayer.feature && lineLayer.feature.properties;
                 if (props && props.name === calle.name) {
-                    const originalStyle = { color: '#e8a838', weight: 2, opacity: 0.8 };
-                    lineLayer.setStyle({ color: '#ff0000', weight: 5, opacity: 1 });
-                    setTimeout(() => lineLayer.setStyle(originalStyle), 2500);
+                    lineLayer.setStyle({ color: '#ff9900ff', weight: 3, opacity: 1 });
+                } else {
+                    lineLayer.setStyle({ color: '#333333', weight: 2, opacity: 0.6 });
                 }
             });
         });
-    } catch(e) { console.error('Error zoom calle:', e); }
+    } catch (e) { console.error('Error zoom calle:', e); }
 }
 
 function buscarSuministro() {
@@ -1195,18 +1489,18 @@ function buscarSuministro() {
     const resultsDiv = document.getElementById('searchResults');
     if (!texto) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Ingresá un texto para buscar.</div>'; return; }
     if (suministrosData.length === 0) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Primero cargá los datos base.</div>'; return; }
-    
+
     const todoEncontrado = suministrosData.filter(s => { const valor = s[campo]; return valor && String(valor).toLowerCase().includes(texto); });
     if (!resultsDiv) return;
     if (todoEncontrado.length === 0) { resultsDiv.innerHTML = '<div class="search-no-results">Sin resultados.</div>'; return; }
-    
+
     let enFiltro = todoEncontrado, enOtra = [];
     if (currentFilter && currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
         const numFimms = currentFilter.num_fimm.map(String);
         enFiltro = todoEncontrado.filter(s => numFimms.includes(String(s.Localidad)));
         enOtra = todoEncontrado.filter(s => !numFimms.includes(String(s.Localidad)));
     }
-    
+
     resultsDiv.innerHTML = '';
     if (enFiltro.length > 0) {
         enFiltro.slice(0, 20).forEach(item => renderResultItem(item, resultsDiv));
@@ -1231,7 +1525,7 @@ function renderResultItem(item, container, otraLocalidad = null) {
     const ruta = item.ruta || '-';
     const orden = item.orden || '-';
     const colorRuta = (ruta && ruta !== '-') ? obtenerColorRuta(String(ruta)) : '#666';
-    
+
     const div = document.createElement('div');
     div.className = 'search-result-item';
     div.innerHTML = `<div class="result-main">${item.Nombre || item.medidor || '-'}</div>
@@ -1243,14 +1537,14 @@ function renderResultItem(item, container, otraLocalidad = null) {
 }
 
 // Estado del resaltado activo de suministro buscado
-let _highlightRestore   = null;  // función para restaurar el estilo original
-let _highlightTimer     = null;  // timeout de auto-restauración (15 s)
-let _highlightMapClick  = null;  // handler de clic en mapa para dismissal
+let _highlightRestore = null;  // función para restaurar el estilo original
+let _highlightTimer = null;  // timeout de auto-restauración (15 s)
+let _highlightMapClick = null;  // handler de clic en mapa para dismissal
 
 function _cancelarResaltadoSuministro() {
-    if (_highlightTimer)    { clearTimeout(_highlightTimer);          _highlightTimer    = null; }
-    if (_highlightMapClick) { map.off('click', _highlightMapClick);   _highlightMapClick = null; }
-    if (_highlightRestore)  { _highlightRestore();                    _highlightRestore  = null; }
+    if (_highlightTimer) { clearTimeout(_highlightTimer); _highlightTimer = null; }
+    if (_highlightMapClick) { map.off('click', _highlightMapClick); _highlightMapClick = null; }
+    if (_highlightRestore) { _highlightRestore(); _highlightRestore = null; }
 }
 
 function zoomASuministro(item) {
@@ -1270,9 +1564,9 @@ function zoomASuministro(item) {
     const medidorBuscado = item.medidor != null ? String(item.medidor) : null;
 
     let encontrado = false;
-    layerGroups.suministros.eachLayer(function(geoJsonLayer) {
+    layerGroups.suministros.eachLayer(function (geoJsonLayer) {
         if (encontrado) return;
-        geoJsonLayer.eachLayer(function(circleLayer) {
+        geoJsonLayer.eachLayer(function (circleLayer) {
             if (encontrado) return;
             if (!circleLayer.getLatLng) return;
 
@@ -1280,16 +1574,16 @@ function zoomASuministro(item) {
             // Fallback: distancia de coordenadas < 5 m
             const props = circleLayer.feature && circleLayer.feature.properties;
             const coincideMedidor = medidorBuscado && props && String(props.medidor) === medidorBuscado;
-            const coincideCoords  = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
+            const coincideCoords = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
             if (!coincideMedidor && !coincideCoords) return;
 
             encontrado = true;
             setTimeout(() => {
-                const colorOriginal  = circleLayer.options.fillColor;
+                const colorOriginal = circleLayer.options.fillColor;
                 const borderOriginal = circleLayer.options.color;
                 const weightOriginal = circleLayer.options.weight;
-                const opacOriginal   = circleLayer.options.fillOpacity;
-                const radioOriginal  = circleLayer.options.radius;
+                const opacOriginal = circleLayer.options.fillOpacity;
+                const radioOriginal = circleLayer.options.radius;
 
                 // Aplicar resaltado: círculo blanco con borde azul intenso
                 circleLayer.setStyle({ fillColor: '#ffffff', color: '#1565C0', weight: 3.5, fillOpacity: 0.95 });
@@ -1324,8 +1618,8 @@ function zoomASuministro(item) {
 
 function initIndicadoresPanel() {
     const toggleBtn = document.getElementById('toggleIndicadoresBtn');
-    const closeBtn  = document.getElementById('closeIndicadoresBtn');
-    const panel     = document.getElementById('indicadoresPanel');
+    const closeBtn = document.getElementById('closeIndicadoresBtn');
+    const panel = document.getElementById('indicadoresPanel');
     if (!toggleBtn || !panel) return;
     toggleBtn.addEventListener('click', () => {
         panel.classList.toggle('open');
@@ -1356,13 +1650,13 @@ function renderIndicadores() {
 
     // --- KPIs globales ---
     const totalSuministros = suministrosActivos.length;
-    const conectados  = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'conectado').length;
-    const cortados    = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'cortado').length;
-    const anomalias   = suministrosActivos.filter(s => ['anomalia','anomalía'].includes((s.estado || '').toLowerCase())).length;
-    const sinEstado   = totalSuministros - conectados - cortados - anomalias;
-    const conRuta     = suministrosActivos.filter(s => s.ruta && s.ruta !== '' && s.orden && s.orden !== 0).length;
-    const sinRuta     = totalSuministros - conRuta;
-    const totalAreas  = localidadesActivas.length;
+    const conectados = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'conectado').length;
+    const cortados = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'cortado').length;
+    const anomalias = suministrosActivos.filter(s => ['anomalia', 'anomalía'].includes((s.estado || '').toLowerCase())).length;
+    const sinEstado = totalSuministros - conectados - cortados - anomalias;
+    const conRuta = suministrosActivos.filter(s => s.ruta && s.ruta !== '' && s.orden && s.orden !== 0).length;
+    const sinRuta = totalSuministros - conRuta;
+    const totalAreas = localidadesActivas.length;
 
     // --- Suministros por área (top 8) ---
     const porArea = {};
@@ -1372,7 +1666,7 @@ function renderIndicadores() {
         porArea[nombre] = (porArea[nombre] || 0) + 1;
     });
     const topAreas = Object.entries(porArea).sort((a, b) => b[1] - a[1]).slice(0, 8);
-    const maxArea  = topAreas.length > 0 ? topAreas[0][1] : 1;
+    const maxArea = topAreas.length > 0 ? topAreas[0][1] : 1;
 
     // --- Rutas únicas ---
     const rutasUnicas = new Set(suministrosActivos.filter(s => s.ruta && s.ruta !== '').map(s => String(s.ruta)));
@@ -1396,9 +1690,9 @@ function renderIndicadores() {
     if (totalSuministros > 0) {
         const estadosData = [
             { label: 'Conectado', valor: conectados, color: '#28a745' },
-            { label: 'Cortado',   valor: cortados,   color: '#dc3545' },
-            { label: 'Anomalía',  valor: anomalias,  color: '#fd7e14' },
-            { label: 'Sin dato',  valor: sinEstado,  color: '#adb5bd' }
+            { label: 'Cortado', valor: cortados, color: '#dc3545' },
+            { label: 'Anomalía', valor: anomalias, color: '#fd7e14' },
+            { label: 'Sin dato', valor: sinEstado, color: '#adb5bd' }
         ].filter(d => d.valor > 0);
 
         html += `<div class="indicadores-section"><h4>Estado de suministros</h4>`;
@@ -1452,14 +1746,14 @@ function renderDonutSVG(data, total) {
         const angle = (d.valor / total) * 2 * Math.PI;
         const endAngle = startAngle + angle;
         const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
-        const x2 = cx + r * Math.cos(endAngle),   y2 = cy + r * Math.sin(endAngle);
-        const xi1 = cx + ri * Math.cos(endAngle),  yi1 = cy + ri * Math.sin(endAngle);
-        const xi2 = cx + ri * Math.cos(startAngle),yi2 = cy + ri * Math.sin(startAngle);
+        const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
+        const xi1 = cx + ri * Math.cos(endAngle), yi1 = cy + ri * Math.sin(endAngle);
+        const xi2 = cx + ri * Math.cos(startAngle), yi2 = cy + ri * Math.sin(startAngle);
         const large = angle > Math.PI ? 1 : 0;
         svgPath += `<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${xi1},${yi1} A${ri},${ri} 0 ${large},0 ${xi2},${yi2} Z" fill="${d.color}" stroke="white" stroke-width="1.5"/>`;
         startAngle = endAngle;
     });
-    return `<svg id="donutEstados" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${svgPath}<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">${total}</text></svg>`;
+    return `<svg id="donutEstados" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${svgPath}<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">${total}</text></svg>`;
 }
 
 // Llamar a renderIndicadores cada vez que cambian los datos
@@ -1472,33 +1766,33 @@ function actualizarIndicadoresSiAbierto() {
 
 function inicializarModuloRuteo(suministros, localidadNombre) {
     console.log('📦 Inicializando módulo de ruteo con', suministros.length, 'suministros');
-    
+
     localidadFiltroActual = localidadNombre;
     borrador = [];
     suministrosBorradorMap = {};
     modoEdicion = false;
     rutasVisibles.clear();
-    
+
     // Clasificar suministros basado en ruta y orden
     suministrosConRuta = suministros.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
     suministrosSinRuta = suministros.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
-    
+
     console.log(`📊 Clasificación: ${suministrosConRuta.length} con ruta+orden, ${suministrosSinRuta.length} sin asignar`);
-    
+
     // Inicializar mapa de borrador
     suministros.forEach(s => {
         suministrosBorradorMap[s.medidor] = { ruta: s.ruta ?? null, orden: s.orden ?? null };
     });
-    
+
     // Inicializar visibilidad de rutas (todas visibles por defecto)
     const rutasUnicas = [...new Set(suministrosConRuta.map(s => String(s.ruta)))];
     rutasUnicas.forEach(ruta => rutasVisibles.set(ruta, true));
-    
+
     // Asegurar que los puntos se muestren correctamente en el mapa
     if (layerGroups.suministros) {
         renderDataToLayer('suministros', suministros);
     }
-    
+
     renderPanelRuteo();
 }
 
@@ -1506,7 +1800,7 @@ function limpiarModuloRuteo() {
     if (ruteoLayerGroup) { map.removeLayer(ruteoLayerGroup); ruteoLayerGroup = null; }
     if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
     if (capaRutasGroup) { map.removeLayer(capaRutasGroup); capaRutasGroup = null; }
-    
+
     suministrosConRuta = [];
     suministrosSinRuta = [];
     borrador = [];
@@ -1514,7 +1808,7 @@ function limpiarModuloRuteo() {
     modoEdicion = false;
     localidadFiltroActual = null;
     rutasVisibles.clear();
-    
+
     const panel = document.getElementById('ruteoModuloPanel');
     if (panel) panel.style.display = 'none';
 }
@@ -1532,12 +1826,12 @@ function renderPanelRuteo() {
             document.getElementById('sidebar').appendChild(panel);
         }
     }
-    
+
     const rutasUnicas = [...new Set(suministrosConRuta.map(s => String(s.ruta)))].sort((a, b) => Number(a) - Number(b));
     const yaAsignadosEnBorrador = new Set(borrador.map(b => String(b.medidor)));
     const sinAsignarCount = suministrosSinRuta.filter(s => !yaAsignadosEnBorrador.has(String(s.medidor))).length;
     const hayBorrador = borrador.length > 0;
-    
+
     panel.innerHTML = `
         <h3>🗺️ Gestión de Rutas</h3>
         
@@ -1551,10 +1845,10 @@ function renderPanelRuteo() {
         ${rutasUnicas.length > 0 ? `
         <div style="margin-bottom:10px; max-height:200px; overflow-y:auto;">
             ${rutasUnicas.map(ruta => {
-                const sumisEnRuta = suministrosConRuta.filter(s => String(s.ruta) === ruta);
-                const color = obtenerColorRuta(ruta);
-                const esVisible = rutasVisibles.get(ruta) !== false;
-                return `
+        const sumisEnRuta = suministrosConRuta.filter(s => String(s.ruta) === ruta);
+        const color = obtenerColorRuta(ruta);
+        const esVisible = rutasVisibles.get(ruta) !== false;
+        return `
                     <div class="ruta-item" data-ruta="${ruta}" style="
                         display: flex;
                         justify-content: space-between;
@@ -1585,7 +1879,7 @@ function renderPanelRuteo() {
                         </span>
                     </div>
                 `;
-            }).join('')}
+    }).join('')}
         </div>
         ` : `<div style="font-size:0.82em; color:#888; margin-bottom:8px;">📭 No hay rutas asignadas</div>`}
         
@@ -1607,15 +1901,15 @@ function renderPanelRuteo() {
         </button>
         ` : ''}
     `;
-    
+
     panel.style.display = 'block';
-    
+
     // Event listeners para los toggles de ruta
     document.querySelectorAll('.ruta-toggle-btn').forEach(btn => {
         btn.removeEventListener('click', handleRutaToggle);
         btn.addEventListener('click', handleRutaToggle);
     });
-    
+
     document.getElementById('ruteoModoEdicionBtn')?.removeEventListener('click', toggleModoEdicion);
     document.getElementById('ruteoModoEdicionBtn')?.addEventListener('click', toggleModoEdicion);
     document.getElementById('ruteoConfirmarBtn')?.removeEventListener('click', confirmarBorrador);
@@ -1633,10 +1927,10 @@ function handleRutaToggle(e) {
 function toggleVisibilidadRuta(ruta) {
     const esVisible = rutasVisibles.get(ruta);
     rutasVisibles.set(ruta, !esVisible);
-    
+
     // Actualizar los puntos de suministros de esta ruta
-    layerGroups.suministros.eachLayer(function(geoJsonLayer) {
-        geoJsonLayer.eachLayer(function(circleLayer) {
+    layerGroups.suministros.eachLayer(function (geoJsonLayer) {
+        geoJsonLayer.eachLayer(function (circleLayer) {
             const props = circleLayer.feature && circleLayer.feature.properties;
             if (props && String(props.ruta) === String(ruta)) {
                 if (esVisible) {
@@ -1649,7 +1943,7 @@ function toggleVisibilidadRuta(ruta) {
             }
         });
     });
-    
+
     // Actualizar UI del panel
     const rutaItem = document.querySelector(`.ruta-item[data-ruta="${ruta}"]`);
     if (rutaItem) {
@@ -1659,13 +1953,13 @@ function toggleVisibilidadRuta(ruta) {
         }
         rutaItem.style.opacity = !esVisible ? '1' : '0.5';
     }
-    
+
     showStatus(`${!esVisible ? 'Mostrando' : 'Ocultando'} ruta ${ruta}`, 'success');
 }
 
 function toggleModoEdicion() {
     modoEdicion = !modoEdicion;
-    
+
     if (modoEdicion) {
         renderPuntosSinAsignar();
         map.getContainer().style.cursor = 'crosshair';
@@ -1675,23 +1969,23 @@ function toggleModoEdicion() {
         map.getContainer().style.cursor = '';
         showStatus('Modo edición desactivado.', 'success');
     }
-    
+
     renderPanelRuteo();
 }
 
 function renderPuntosSinAsignar() {
     if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
     ruteoSinAsignarLayer = L.layerGroup().addTo(map);
-    
+
     const yaAsignados = new Set(borrador.map(b => String(b.medidor)));
     const pendientes = suministrosSinRuta.filter(s => !yaAsignados.has(String(s.medidor)));
-    
+
     console.log(`📍 Puntos sin asignar a renderizar: ${pendientes.length}`);
-    
+
     pendientes.forEach(s => {
         const latlng = getLatLngFromSuministro(s);
         if (!latlng) return;
-        
+
         const marker = L.circleMarker(latlng, {
             radius: 8,
             fillColor: '#e74c3c',
@@ -1700,11 +1994,11 @@ function renderPuntosSinAsignar() {
             opacity: 1,
             fillOpacity: 0.85
         }).bindTooltip(`Sin asignar<br>Medidor: ${s.medidor}<br>${s.Nombre || ''}`, { permanent: false });
-        
+
         marker.on('click', () => abrirPopupAsignacion(s, marker));
         ruteoSinAsignarLayer.addLayer(marker);
     });
-    
+
     if (pendientes.length === 0 && modoEdicion) {
         showStatus('✓ Todos los puntos están asignados.', 'success');
         modoEdicion = false;
@@ -1716,9 +2010,9 @@ function abrirPopupAsignacion(suministro, marker) {
     const rutasExistentes = [...new Set(suministrosConRuta.map(s => String(s.ruta)))].sort((a, b) => Number(a) - Number(b));
     const siguienteOrden = {};
     rutasExistentes.forEach(r => { siguienteOrden[r] = getSiguienteOrden(r); });
-    
+
     const popupId = `asig_${suministro.medidor}`;
-    
+
     const html = `
         <div style="min-width:220px; font-size:0.85em;">
             <strong>✏️ Asignar suministro</strong><br>
@@ -1746,16 +2040,16 @@ function abrirPopupAsignacion(suministro, marker) {
             </button>
         </div>
     `;
-    
+
     const popup = L.popup({ maxWidth: 260 }).setLatLng(marker.getLatLng()).setContent(html).openOn(map);
-    
+
     setTimeout(() => {
         const selectRuta = document.getElementById(`${popupId}_ruta`);
         const nuevaDiv = document.getElementById(`${popupId}_nuevaRutaDiv`);
         const ordenInput = document.getElementById(`${popupId}_orden`);
         if (!selectRuta) return;
-        
-        selectRuta.addEventListener('change', function() {
+
+        selectRuta.addEventListener('change', function () {
             if (this.value === '__nueva__') {
                 nuevaDiv.style.display = 'block';
                 ordenInput.value = 1;
@@ -1767,13 +2061,13 @@ function abrirPopupAsignacion(suministro, marker) {
     }, 50);
 }
 
-window.confirmarAsignacionPopup = function(medidor, popupId) {
+window.confirmarAsignacionPopup = function (medidor, popupId) {
     const selectEl = document.getElementById(`${popupId}_ruta`);
     const ordenEl = document.getElementById(`${popupId}_orden`);
     const nuevaEl = document.getElementById(`${popupId}_nuevaRuta`);
-    
+
     if (!selectEl || !ordenEl) return;
-    
+
     let rutaNueva = selectEl.value;
     if (rutaNueva === '__nueva__') {
         rutaNueva = nuevaEl?.value?.trim();
@@ -1781,13 +2075,13 @@ window.confirmarAsignacionPopup = function(medidor, popupId) {
     }
     const ordenNuevo = parseInt(ordenEl.value, 10);
     if (isNaN(ordenNuevo) || ordenNuevo < 1) { alert('Ingrese un orden válido.'); return; }
-    
+
     const suministro = suministrosSinRuta.find(s => String(s.medidor) === String(medidor));
     if (!suministro) return;
-    
+
     // Desplazar órdenes en borrador
     desplazarOrdenEnBorrador(String(rutaNueva), ordenNuevo, medidor);
-    
+
     const entrada = {
         medidor,
         rutaAnterior: suministro.ruta ?? null,
@@ -1798,9 +2092,9 @@ window.confirmarAsignacionPopup = function(medidor, popupId) {
     const existente = borrador.findIndex(b => String(b.medidor) === String(medidor));
     if (existente >= 0) borrador[existente] = entrada;
     else borrador.push(entrada);
-    
+
     suministrosBorradorMap[medidor] = { ruta: String(rutaNueva), orden: ordenNuevo };
-    
+
     // Mover de sinRuta a conRuta en memoria
     const idx = suministrosSinRuta.findIndex(s => String(s.medidor) === String(medidor));
     if (idx >= 0) {
@@ -1808,33 +2102,33 @@ window.confirmarAsignacionPopup = function(medidor, popupId) {
         s.ruta = String(rutaNueva);
         s.orden = ordenNuevo;
         suministrosConRuta.push(s);
-        
+
         // Actualizar visibilidad de la nueva ruta
         if (!rutasVisibles.has(String(rutaNueva))) {
             rutasVisibles.set(String(rutaNueva), true);
         }
     }
-    
+
     map.closePopup();
     renderPuntosSinAsignar();
     renderPanelRuteo();
-    
+
     // Actualizar el color del punto en el mapa
     actualizarColorPuntoByMedidor(medidor);
-    
+
     showStatus(`✅ Medidor ${medidor} → Ruta ${rutaNueva}, Orden ${ordenNuevo} (borrador)`, 'success');
 };
 
 function desplazarOrdenEnBorrador(ruta, ordenDesde, medidorNuevo) {
     const afectados = [];
-    
+
     suministrosConRuta.forEach(s => {
         const est = suministrosBorradorMap[s.medidor] || { ruta: s.ruta, orden: s.orden };
         if (String(est.ruta) === String(ruta) && Number(est.orden) >= ordenDesde && String(s.medidor) !== String(medidorNuevo)) {
             afectados.push({ medidor: s.medidor, ordenActual: Number(est.orden) });
         }
     });
-    
+
     borrador.forEach(b => {
         if (String(b.rutaNueva) === String(ruta) && Number(b.ordenNuevo) >= ordenDesde && String(b.medidor) !== String(medidorNuevo)) {
             if (!afectados.find(a => String(a.medidor) === String(b.medidor))) {
@@ -1842,12 +2136,12 @@ function desplazarOrdenEnBorrador(ruta, ordenDesde, medidorNuevo) {
             }
         }
     });
-    
+
     afectados.sort((a, b) => b.ordenActual - a.ordenActual);
-    
+
     afectados.forEach(({ medidor, ordenActual }) => {
         suministrosBorradorMap[medidor] = { ...suministrosBorradorMap[medidor], orden: ordenActual + 1 };
-        
+
         const enBorrador = borrador.findIndex(b => String(b.medidor) === String(medidor));
         if (enBorrador >= 0) {
             borrador[enBorrador].ordenNuevo = ordenActual + 1;
@@ -1868,19 +2162,19 @@ function desplazarOrdenEnBorrador(ruta, ordenDesde, medidorNuevo) {
 
 async function confirmarBorrador() {
     if (borrador.length === 0) return;
-    
+
     const btn = document.getElementById('ruteoConfirmarBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
-    
+
     let errores = 0;
-    
+
     for (const cambio of borrador) {
         try {
             const { error } = await supabaseClient
                 .from('suministros')
                 .update({ ruta: cambio.rutaNueva, orden: cambio.ordenNuevo })
                 .eq('medidor', cambio.medidor);
-            
+
             if (error) {
                 console.error(`Error actualizando medidor ${cambio.medidor}:`, error);
                 errores++;
@@ -1896,14 +2190,14 @@ async function confirmarBorrador() {
             errores++;
         }
     }
-    
+
     if (errores === 0) {
         showStatus(`✓ ${borrador.length} cambio(s) guardados correctamente.`, 'success');
         borrador = [];
         suministrosBorradorMap = {};
         suministrosConRuta = suministrosData.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
         suministrosSinRuta = suministrosData.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
-        
+
         // Re-renderizar suministros en el mapa
         if (layerGroups.suministros && currentFilter && currentFilter.num_fimm) {
             const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
@@ -1915,7 +2209,7 @@ async function confirmarBorrador() {
     } else {
         showStatus(`⚠️ ${errores} error(es) al guardar.`, 'error');
     }
-    
+
     modoEdicion = false;
     if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
     map.getContainer().style.cursor = '';
@@ -1924,23 +2218,23 @@ async function confirmarBorrador() {
 
 function descartarBorrador() {
     if (!confirm(`¿Descartar ${borrador.length} cambio(s) pendiente(s)?`)) return;
-    
+
     borrador = [];
     suministrosBorradorMap = {};
     suministrosConRuta = suministrosData.filter(s => s.ruta != null && s.ruta !== '' && s.orden != null && s.orden !== 0 && s.orden !== '');
     suministrosSinRuta = suministrosData.filter(s => s.ruta == null || s.ruta === '' || s.orden == null || s.orden === 0 || s.orden === '');
-    
+
     modoEdicion = false;
     if (ruteoSinAsignarLayer) { map.removeLayer(ruteoSinAsignarLayer); ruteoSinAsignarLayer = null; }
     map.getContainer().style.cursor = '';
-    
+
     // Re-renderizar
     if (currentFilter && currentFilter.num_fimm) {
         const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
         renderDataToLayer('suministros', suministrosFiltrados);
         inicializarModuloRuteo(suministrosFiltrados, localidadFiltroActual);
     }
-    
+
     renderPanelRuteo();
     showStatus('Cambios descartados.', 'success');
 }
@@ -1966,4 +2260,108 @@ function getSiguienteOrden(ruta) {
         if (String(b.rutaNueva) === String(ruta) && Number(b.ordenNuevo) > max) max = Number(b.ordenNuevo);
     });
     return max + 1;
+}
+
+function descargarReporteCSV() {
+    if (!currentFilter || !currentFilter.num_fimm || currentFilter.num_fimm.length === 0) {
+        showStatus('Aplique un filtro para descargar el reporte', 'error');
+        return;
+    }
+
+    const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+
+    if (suministrosFiltrados.length === 0) {
+        showStatus('No hay suministros para exportar en el área filtrada', 'warning');
+        return;
+    }
+
+    // Definimos las columnas principales primero
+    const keys = ['medidor', 'Nombre', 'Cliente', 'Direccion', 'estado', 'ruta', 'orden', 'Localidad'];
+    const allKeys = Object.keys(suministrosFiltrados[0]).filter(k => k !== 'geom' && k !== 'wkt_geom' && k !== 'the_geom');
+    const finalKeys = [...new Set([...keys, ...allKeys])];
+
+    const csvRows = [];
+    csvRows.push(finalKeys.join(';'));
+
+    for (const row of suministrosFiltrados) {
+        const values = finalKeys.map(k => {
+            let val = row[k];
+            if (val === null || val === undefined) return '';
+            let str = String(val).replace(/"/g, '""');
+            if (str.includes(';') || str.includes('\n') || str.includes('"')) {
+                str = `"${str}"`;
+            }
+            return str;
+        });
+        csvRows.push(values.join(';'));
+    }
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' }); // BOM para Excel
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+
+    const filterNameStr = currentFilter.name ? currentFilter.name.replace(/\s+/g, '_') : 'filtrado';
+    link.setAttribute("download", `Reporte_Suministros_${filterNameStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showStatus('Reporte descargado', 'success');
+}
+
+function descargarCallesCSV() {
+    if (!callesFiltradas || callesFiltradas.length === 0) {
+        showStatus('No hay calles para exportar en el área filtrada', 'warning');
+        return;
+    }
+
+    const keys = Object.keys(callesFiltradas[0]).filter(k => k !== 'geom' && k !== 'wkt_geom' && k !== 'the_geom');
+
+    const csvRows = [];
+    csvRows.push(keys.join(';'));
+
+    const seenNames = new Set();
+    const callesUnicas = callesFiltradas.filter(calle => {
+        const name = calle.name ? String(calle.name).trim().toLowerCase() : '';
+        if (seenNames.has(name)) {
+            return false;
+        }
+        seenNames.add(name);
+        return true;
+    });
+
+    for (const row of callesUnicas) {
+        const values = keys.map(k => {
+            let val = row[k];
+            if (val === null || val === undefined) return '';
+            let str = String(val).replace(/"/g, '""');
+            if (str.includes(';') || str.includes('\n') || str.includes('"')) {
+                str = `"${str}"`;
+            }
+            return str;
+        });
+        csvRows.push(values.join(';'));
+    }
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' }); // BOM para Excel
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+
+    const filterNameStr = currentFilter && currentFilter.name ? currentFilter.name.replace(/\s+/g, '_') : 'filtrado';
+    link.setAttribute("download", `Reporte_Calles_${filterNameStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showStatus('Reporte de calles descargado', 'success');
 }
