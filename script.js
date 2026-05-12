@@ -6,6 +6,7 @@ let callesData = [];
 let redGasData = [];
 let suministrosData = [];   // Cache completo — nunca se limpia con clearFilter
 let callesFiltradas = [];  // Calles de la localidad activa (para búsqueda)
+let parcelasData = [];      // Cache de capa Parcelas
 let currentFilter = null;
 let map;
 let layerGroups;
@@ -133,7 +134,8 @@ function initStyles() {
         municipios: { color: '#232323', weight: 1, fillOpacity: 0.1, fillColor: '#FFFFFF' },
         localidades: { color: '#0078ff', weight: 2, fillOpacity: 0.1, fillColor: '#5da6f8' },
         red_de_gas: { color: '#ff0000', weight: 2, opacity: 0.7 },
-        calles: { color: '#333333', weight: 2, opacity: 0.6 }
+        calles: { color: '#333333', weight: 2, opacity: 0.6 },
+        parcelas: { color: '#b45309', weight: 1, fillOpacity: 0.1, fillColor: '#fbbf24', opacity: 0.8 }
     };
 
     filteredStyle = {
@@ -148,7 +150,8 @@ function initLayerGroups() {
         localidades: L.layerGroup().addTo(map),
         red_de_gas: L.layerGroup(),
         calles: L.layerGroup(),
-        suministros: L.layerGroup()
+        suministros: L.layerGroup(),
+        parcelas: L.layerGroup()
     };
 
     map.on('zoomend', function () {
@@ -358,6 +361,18 @@ function createCallesPopup(properties) {
     return content;
 }
 
+function createParcelasPopup(properties) {
+    let content = `<strong>📐 Parcela</strong><br><hr style="margin:5px 0;">`;
+    if (properties.localidad) content += `<strong>Localidad:</strong> ${properties.localidad}<br>`;
+    if (properties.PDA || properties.pda) content += `<strong>PDA:</strong> ${properties.PDA || properties.pda}<br>`;
+    Object.keys(properties).forEach(k => {
+        if (!['localidad', 'PDA', 'pda', 'geom', 'the_geom', 'wkt_geom'].includes(k) && properties[k] != null && properties[k] !== '') {
+            content += `<strong>${k}:</strong> ${properties[k]}<br>`;
+        }
+    });
+    return content;
+}
+
 function createLocalidadPopup(properties) {
     let content = `<strong>Área de Servicio</strong><br>`;
     if (properties.nombre) content += `<strong>Nombre:</strong> ${properties.nombre}<br>`;
@@ -484,6 +499,7 @@ function renderDataToLayer(tableName, data, style = null) {
                         else if (tableName === 'localidades') popupContent = createLocalidadPopup(item);
                         else if (tableName === 'suministros') popupContent = createSuministroPopup(item);
                         else if (tableName === 'calles') popupContent = createCallesPopup(item);
+        else if (tableName === 'parcelas') popupContent = createParcelasPopup(item);
                         else popupContent = `<strong>Capa: ${tableName}</strong><br>${JSON.stringify(item)}`;
                         layer.bindPopup(popupContent);
                     }
@@ -641,6 +657,9 @@ async function loadBaseData() {
             }
         }
 
+        // ARBA se carga mediante selección espacial al aplicar un filtro de localidad
+        // No se carga en datos base (la geometría cruda WKB no es parseable sin RPC)
+
         showStatus('Datos base cargados. Seleccione un filtro para ver más información.', 'success');
         actualizarIndicadoresSiAbierto();
     } catch (error) {
@@ -693,6 +712,7 @@ function enableDependentLayers(filterName) {
     const redGasLabel = document.getElementById('label-red_de_gas');
     const callesLabel = document.getElementById('label-calles');
     const suministrosLabel = document.getElementById('label-suministros');
+    const parcelasLabel = document.getElementById('label-parcelas');
 
     if (redGasLabel) {
         redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" checked> Red de Gas (${filterName})`;
@@ -707,6 +727,11 @@ function enableDependentLayers(filterName) {
     if (suministrosLabel) {
         suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" checked> Suministros (${filterName})`;
         const cb = document.getElementById('layer-suministros');
+        if (cb) cb.addEventListener('change', handleCheckboxChange);
+    }
+    if (parcelasLabel) {
+        parcelasLabel.innerHTML = `<input type="checkbox" id="layer-parcelas" data-table="parcelas" checked> Parcelas (${filterName})`;
+        const cb = document.getElementById('layer-parcelas');
         if (cb) cb.addEventListener('change', handleCheckboxChange);
     }
 
@@ -725,6 +750,7 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
         if (filterType === 'localidad') {
             if (tableName === 'calles') functionName = 'get_streets_by_localidad';
             else if (tableName === 'red_de_gas') functionName = 'get_gas_network_by_localidad';
+            else if (tableName === 'parcelas') functionName = 'get_parcelas_by_localidad';
             else return [];
             params = { localidad_name: filterValue };
         } else {
@@ -738,6 +764,7 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
             console.error(`Error en RPC ${functionName}:`, error);
             return [];
         }
+        console.log(`${tableName} RPC devolvió ${(data || []).length} registros`);
         return data || [];
     } catch (error) {
         console.error(`Error cargando ${tableName}:`, error);
@@ -817,6 +844,17 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         console.log(`✓ ${redGasFiltrada.length} red de gas cargada`);
     }
 
+    // Cargar Parcelas
+    const parcelasFiltradas = await loadFilteredPostGIS('parcelas', 'localidad', localidadNombre);
+    layerGroups.parcelas.clearLayers();
+    if (parcelasFiltradas.length > 0) {
+        renderDataToLayer('parcelas', parcelasFiltradas);
+        if (!map.hasLayer(layerGroups.parcelas)) layerGroups.parcelas.addTo(map);
+        console.log(`✓ ${parcelasFiltradas.length} parcelas cargadas`);
+    } else {
+        console.log('⚠️ No se encontraron parcelas para esta localidad');
+    }
+
     // Cargar suministros filtrando por num_fimm desde el cache
     console.log(`Filtrando suministros por Localidad = ${numFimm}`);
     const suministrosFiltrados = suministrosData.filter(s => s.Localidad === numFimm);
@@ -838,7 +876,7 @@ async function aplicarFiltroLocalidad(localidadNombre) {
 
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
 
-    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros`;
+    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros, ${parcelasFiltradas.length} parcelas`;
     showStatus(summary, 'success');
     actualizarIndicadoresSiAbierto();
     if (callesFiltradas.length > 0) mostrarBuscadorCalles();
@@ -926,6 +964,15 @@ async function applyUnidadRegionalFilter() {
         console.log(`✓ ${redGasUR.length} red de gas cargada (apagada)`);
     }
 
+    // Cargar Parcelas (apagadas por defecto)
+    const parcelasUR = await loadFilteredPostGIS('parcelas', 'localidad', unidadRegional);
+    layerGroups.parcelas.clearLayers();
+    if (parcelasUR.length > 0) {
+        renderDataToLayer('parcelas', parcelasUR);
+        if (map.hasLayer(layerGroups.parcelas)) map.removeLayer(layerGroups.parcelas);
+        console.log(`✓ ${parcelasUR.length} parcelas cargadas (apagadas)`);
+    }
+
     // Cargar suministros filtrados por las localidades
     const numFimms = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
     const suministrosUR = suministrosData.filter(s => numFimms.includes(s.Localidad));
@@ -951,9 +998,9 @@ async function applyUnidadRegionalFilter() {
 }
 
 function habilitarCapasDependientesApagadas(filterName) {
-    ['red_de_gas', 'calles', 'suministros'].forEach(capa => {
+    ['red_de_gas', 'calles', 'suministros', 'parcelas'].forEach(capa => {
         const label = document.getElementById(`label-${capa}`);
-        const nombres = { red_de_gas: 'Red de Gas', calles: 'Calles', suministros: 'Suministros' };
+        const nombres = { red_de_gas: 'Red de Gas', calles: 'Calles', suministros: 'Suministros', parcelas: 'Parcelas' };
         if (label) {
             label.innerHTML = `<input type="checkbox" id="layer-${capa}" data-table="${capa}"> ${nombres[capa]} (${filterName})`;
             const cb = document.getElementById(`layer-${capa}`);
@@ -1139,23 +1186,33 @@ function clearFilter() {
         suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" disabled> Suministros (requiere filtro)`;
     }
 
+    const parcelasLabel = document.getElementById('label-parcelas');
+    if (parcelasLabel) {
+        parcelasLabel.innerHTML = `<input type="checkbox" id="layer-parcelas" data-table="parcelas" disabled> Parcelas (requiere filtro)`;
+    }
+
     const redGasCheckbox = document.getElementById('layer-red_de_gas');
     const callesCheckbox = document.getElementById('layer-calles');
     const suministrosCheckbox = document.getElementById('layer-suministros');
+    const parcelasCheckbox = document.getElementById('layer-parcelas');
 
     if (redGasCheckbox) { redGasCheckbox.checked = false; redGasCheckbox.disabled = true; }
     if (callesCheckbox) { callesCheckbox.checked = false; callesCheckbox.disabled = true; }
     if (suministrosCheckbox) { suministrosCheckbox.checked = false; suministrosCheckbox.disabled = true; }
+    if (parcelasCheckbox) { parcelasCheckbox.checked = false; parcelasCheckbox.disabled = true; }
 
     if (layerGroups.red_de_gas && map.hasLayer(layerGroups.red_de_gas)) map.removeLayer(layerGroups.red_de_gas);
     if (layerGroups.calles && map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
     if (layerGroups.suministros && map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
+    if (layerGroups.parcelas && map.hasLayer(layerGroups.parcelas)) map.removeLayer(layerGroups.parcelas);
 
     if (layerGroups.red_de_gas) layerGroups.red_de_gas.clearLayers();
     if (layerGroups.calles) layerGroups.calles.clearLayers();
     if (layerGroups.suministros) layerGroups.suministros.clearLayers();
+    if (layerGroups.parcelas) layerGroups.parcelas.clearLayers();
     callesFiltradas = [];
     ocultarBuscadorCalles();
+    ocultarBuscadorArba();
 
     // Volver a renderizar todos los suministros (sin filtro)
     if (suministrosData.length > 0) {
