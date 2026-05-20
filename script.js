@@ -6,7 +6,7 @@ let callesData = [];
 let redGasData = [];
 let suministrosData = [];   // Cache completo — nunca se limpia con clearFilter
 let callesFiltradas = [];  // Calles de la localidad activa (para búsqueda)
-let parcelasData = [];      // Cache de capa Parcelas
+let arbaData = [];          // Cache de capa ARBA
 let currentFilter = null;
 let map;
 let layerGroups;
@@ -135,7 +135,7 @@ function initStyles() {
         localidades: { color: '#0078ff', weight: 2, fillOpacity: 0.1, fillColor: '#5da6f8' },
         red_de_gas: { color: '#ff0000', weight: 2, opacity: 0.7 },
         calles: { color: '#333333', weight: 2, opacity: 0.6 },
-        parcelas: { color: '#b45309', weight: 1, fillOpacity: 0.1, fillColor: '#fbbf24', opacity: 0.8 }
+        arba: { color: '#c45000', weight: 1.5, fillOpacity: 0.2, fillColor: '#ff8c00', opacity: 0.9 }
     };
 
     filteredStyle = {
@@ -151,7 +151,7 @@ function initLayerGroups() {
         red_de_gas: L.layerGroup(),
         calles: L.layerGroup(),
         suministros: L.layerGroup(),
-        parcelas: L.layerGroup()
+        arba: L.layerGroup()
     };
 
     map.on('zoomend', function () {
@@ -291,7 +291,7 @@ function createMunicipioPopup(properties) {
 }
 
 function createSuministroPopup(properties) {
-    const medidor = properties.medidor || '';
+    const medidor = properties.numero_medidor || '';
     const safeKey = medidor.toString().replace(/[^a-zA-Z0-9]/g, '_');
 
     // Leer del borrador si existe
@@ -309,9 +309,9 @@ function createSuministroPopup(properties) {
     const tieneOrden = orden && orden !== null && orden !== 0;
 
     let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
-    if (properties.medidor) content += `<strong>Num. Medidor:</strong> ${properties.medidor}${getCopyBtn(properties.medidor, 'Medidor')}<br>`;
-    if (properties.Cliente) content += `<strong>Cliente:</strong> ${properties.Cliente}${getCopyBtn(properties.Cliente, 'Cliente')}<br>`;
-    if (properties.Nombre) content += `<strong>Nombre:</strong> ${properties.Nombre}${getCopyBtn(properties.Nombre, 'Nombre')}<br>`;
+    if (properties.numero_medidor) content += `<strong>Num. Medidor:</strong> ${properties.numero_medidor}${getCopyBtn(properties.numero_medidor, 'Medidor')}<br>`;
+    if (properties.cliente) content += `<strong>Cliente:</strong> ${properties.cliente}${getCopyBtn(properties.cliente, 'Cliente')}<br>`;
+    if (properties.direccion) content += `<strong>Dirección:</strong> ${properties.direccion}${getCopyBtn(properties.direccion, 'Dirección')}<br>`;
     if (properties.Direccion) content += `<strong>Dirección:</strong> ${properties.Direccion}${getCopyBtn(properties.Direccion, 'Dirección')}<br>`;
     content += `<strong>Estado:</strong> ${properties.estado || '-'}<br>`;
 
@@ -344,9 +344,9 @@ function createSuministroPopup(properties) {
         <hr style="margin:8px 0; border-color:#ddd;">
         <strong>Cambiar estado:</strong>
         <select id="estado-select-${safeKey}" style="margin:5px 0; padding:5px; width:100%;">
-            <option value="Conectado" ${properties.estado === 'Conectado' ? 'selected' : ''}>🟢 Conectado</option>
-            <option value="Cortado" ${properties.estado === 'Cortado' ? 'selected' : ''}>🔴 Cortado</option>
-            <option value="Anomalia" ${properties.estado === 'Anomalia' ? 'selected' : ''}>🟡 Anomalia</option>
+            <option value="activo" ${properties.estado_contrato === 'activo' ? 'selected' : ''}>🟢 Activo</option>
+            <option value="suspendido" ${properties.estado_contrato === 'suspendido' ? 'selected' : ''}>🔴 Suspendido</option>
+            <option value="baja" ${properties.estado_contrato === 'baja' ? 'selected' : ''}>🟡 Baja</option>
         </select>
         <button class="popup-save-btn" onclick="updateEstado('${safeKey}', '${medidor}')" style="width:100%;">💾 Guardar Estado</button>
         <div id="popup-msg-${safeKey}" style="margin-top:5px; font-size:12px;"></div>
@@ -361,15 +361,10 @@ function createCallesPopup(properties) {
     return content;
 }
 
-function createParcelasPopup(properties) {
-    let content = `<strong>📐 Parcela</strong><br><hr style="margin:5px 0;">`;
+function createArbaPopup(properties) {
+    let content = `<strong>🏠 Parcela</strong><br><hr style="margin:5px 0;">`;
     if (properties.localidad) content += `<strong>Localidad:</strong> ${properties.localidad}<br>`;
-    if (properties.PDA || properties.pda) content += `<strong>PDA:</strong> ${properties.PDA || properties.pda}<br>`;
-    Object.keys(properties).forEach(k => {
-        if (!['localidad', 'PDA', 'pda', 'geom', 'the_geom', 'wkt_geom'].includes(k) && properties[k] != null && properties[k] !== '') {
-            content += `<strong>${k}:</strong> ${properties[k]}<br>`;
-        }
-    });
+    if (properties.partida_) content += `<strong>Partida:</strong> ${properties.partida_}<br>`;
     return content;
 }
 
@@ -499,7 +494,7 @@ function renderDataToLayer(tableName, data, style = null) {
                         else if (tableName === 'localidades') popupContent = createLocalidadPopup(item);
                         else if (tableName === 'suministros') popupContent = createSuministroPopup(item);
                         else if (tableName === 'calles') popupContent = createCallesPopup(item);
-        else if (tableName === 'parcelas') popupContent = createParcelasPopup(item);
+                        else if (tableName === 'arba') popupContent = createArbaPopup(item);
                         else popupContent = `<strong>Capa: ${tableName}</strong><br>${JSON.stringify(item)}`;
                         layer.bindPopup(popupContent);
                     }
@@ -640,12 +635,14 @@ async function loadBaseData() {
             populateProductoTurnoSelects();
         }
 
-        suministrosData = await loadTableData('suministros', { limit: 10000 });
+        suministrosData = await loadTableData('v_suministros_activos', { limit: 10000 });
         console.log('📊 Suministros cargados en cache:', suministrosData.length);
         if (suministrosData.length > 0) {
             console.log('📊 Ejemplo de suministro con ruta/orden:', suministrosData.slice(0, 3).map(s => ({
-                medidor: s.medidor, ruta: s.ruta, orden: s.orden
+                medidor: s.numero_medidor, ruta: s.ruta, orden: s.orden,
+                localidad: s.localidad, localidad_id: s.localidad_id
             })));
+            console.log('📊 Localidades únicas en suministros:', [...new Set(suministrosData.map(s => s.localidad))].slice(0, 10));
             renderDataToLayer('suministros', suministrosData);
             const cb = document.getElementById('layer-suministros');
             if (cb) { cb.disabled = false; cb.checked = false; }
@@ -712,7 +709,7 @@ function enableDependentLayers(filterName) {
     const redGasLabel = document.getElementById('label-red_de_gas');
     const callesLabel = document.getElementById('label-calles');
     const suministrosLabel = document.getElementById('label-suministros');
-    const parcelasLabel = document.getElementById('label-parcelas');
+    const arbaLabel = document.getElementById('label-arba');
 
     if (redGasLabel) {
         redGasLabel.innerHTML = `<input type="checkbox" id="layer-red_de_gas" data-table="red_de_gas" checked> Red de Gas (${filterName})`;
@@ -729,9 +726,9 @@ function enableDependentLayers(filterName) {
         const cb = document.getElementById('layer-suministros');
         if (cb) cb.addEventListener('change', handleCheckboxChange);
     }
-    if (parcelasLabel) {
-        parcelasLabel.innerHTML = `<input type="checkbox" id="layer-parcelas" data-table="parcelas" checked> Parcelas (${filterName})`;
-        const cb = document.getElementById('layer-parcelas');
+    if (arbaLabel) {
+        arbaLabel.innerHTML = `<input type="checkbox" id="layer-arba" data-table="arba" checked> Parcelas (${filterName})`;
+        const cb = document.getElementById('layer-arba');
         if (cb) cb.addEventListener('change', handleCheckboxChange);
     }
 
@@ -739,6 +736,7 @@ function enableDependentLayers(filterName) {
         if (layerGroups.red_de_gas && !map.hasLayer(layerGroups.red_de_gas)) layerGroups.red_de_gas.addTo(map);
         if (layerGroups.calles && !map.hasLayer(layerGroups.calles)) layerGroups.calles.addTo(map);
         if (layerGroups.suministros && !map.hasLayer(layerGroups.suministros)) layerGroups.suministros.addTo(map);
+        if (layerGroups.arba && !map.hasLayer(layerGroups.arba)) layerGroups.arba.addTo(map);
     }, 100);
 }
 
@@ -748,9 +746,12 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
         let functionName, params = {};
 
         if (filterType === 'localidad') {
+            // ARBA: wkt_geom ya es texto WKT → consulta directa, sin función RPC
+            if (tableName === 'arba') {
+                return await loadParcelasDirect(filterValue);
+            }
             if (tableName === 'calles') functionName = 'get_streets_by_localidad';
             else if (tableName === 'red_de_gas') functionName = 'get_gas_network_by_localidad';
-            else if (tableName === 'parcelas') functionName = 'get_parcelas_by_localidad';
             else return [];
             params = { localidad_name: filterValue };
         } else {
@@ -768,6 +769,95 @@ async function loadFilteredPostGIS(tableName, filterType, filterValue) {
         return data || [];
     } catch (error) {
         console.error(`Error cargando ${tableName}:`, error);
+        return [];
+    }
+}
+
+// Parcelas: usa RPC para que PostGIS devuelva geom como GeoJSON/WKT
+// Requiere ejecutar en Supabase SQL Editor:
+//   CREATE OR REPLACE FUNCTION get_parcelas_by_localidad(localidad_name text)
+//   RETURNS TABLE(gid int, localidad varchar, partida float8, partida_ bigint, pda varchar, wkt_geom text) AS $$
+//     SELECT gid, localidad, partida, partida_, pda, ST_AsText(geom) as wkt_geom
+//     FROM parcelas WHERE localidad = localidad_name;
+//   $$ LANGUAGE sql STABLE;
+async function loadParcelasDirect(localidadNombre) {
+    try {
+        console.log(`🏠 Parcelas: cargando por localidad = "${localidadNombre}"`);
+
+        // Intentar con RPC (devuelve wkt_geom como texto)
+        let allData = [];
+        let from = 0;
+        const pageSize = 1000;
+        let usedRPC = false;
+
+        // Primer intento: RPC con ST_AsText (requiere índice en parcelas.localidad)
+        const { data: rpcData, error: rpcError } = await supabaseClient
+            .rpc('get_parcelas_by_localidad', { localidad_name: localidadNombre });
+
+        if (!rpcError && rpcData && rpcData.length > 0) {
+            console.log(`🏠 Parcelas (RPC): ${rpcData.length} registros`);
+            showStatus(`✓ ${rpcData.length} parcelas cargadas`, 'success');
+            return rpcData;
+        }
+
+        if (rpcError) {
+            console.warn('RPC get_parcelas_by_localidad falló, intentando tabla directa sin geom:', rpcError.message);
+            showStatus('⚠️ Parcelas sin geometría — creá el índice: CREATE INDEX ON parcelas (localidad)', 'warning');
+        }
+
+        // Fallback: tabla directa sin columna geom (no serializable por REST)
+        while (true) {
+            const { data: page, error } = await supabaseClient
+                .from('parcelas')
+                .select('gid, localidad, partida, partida_, pda')
+                .eq('localidad', localidadNombre)
+                .range(from, from + pageSize - 1);
+            if (error) {
+                console.error('Error cargando parcelas:', error);
+                showStatus(`❌ Parcelas: ${error.message}`, 'error');
+                return [];
+            }
+            if (page && page.length > 0) allData = allData.concat(page);
+            if (!page || page.length < pageSize) break;
+            from += pageSize;
+        }
+
+        if (allData.length > 0) {
+            console.log(`🏠 Parcelas (sin geom): ${allData.length} registros`);
+            return allData;
+        }
+
+        // ilike fallback
+        if (allData.length === 0) {
+            console.log('Parcelas: sin resultados con eq(), intentando ilike...');
+            let allData2 = [];
+            let from2 = 0;
+            let error2 = null;
+            while (true) {
+                const { data: page2, error: err2 } = await supabaseClient
+                    .from('parcelas')
+                    .select('gid, localidad, partida, partida_, pda')
+                    .ilike('localidad', localidadNombre)
+                    .range(from2, from2 + 999);
+                if (err2) { error2 = err2; break; }
+                if (page2 && page2.length > 0) allData2 = allData2.concat(page2);
+                if (!page2 || page2.length < 1000) break;
+                from2 += 1000;
+            }
+            const data2 = allData2;
+
+            if (!error2 && data2 && data2.length > 0) {
+                console.log(`🏠 ARBA (ilike): ${data2.length} registros encontrados`);
+                return data2;
+            }
+            console.log('🏠 ARBA: sin resultados para esta localidad');
+            return [];
+        }
+
+        console.log(`🏠 ARBA: ${data.length} registros encontrados`);
+        return data;
+    } catch (e) {
+        console.error('loadArbaDirect exception:', e);
         return [];
     }
 }
@@ -844,25 +934,27 @@ async function aplicarFiltroLocalidad(localidadNombre) {
         console.log(`✓ ${redGasFiltrada.length} red de gas cargada`);
     }
 
-    // Cargar Parcelas
-    const parcelasFiltradas = await loadFilteredPostGIS('parcelas', 'localidad', localidadNombre);
-    layerGroups.parcelas.clearLayers();
-    if (parcelasFiltradas.length > 0) {
-        renderDataToLayer('parcelas', parcelasFiltradas);
-        if (!map.hasLayer(layerGroups.parcelas)) layerGroups.parcelas.addTo(map);
-        console.log(`✓ ${parcelasFiltradas.length} parcelas cargadas`);
+    // Cargar ARBA (selección espacial)
+    const arbaFiltrada = await loadFilteredPostGIS('arba', 'localidad', localidadNombre);
+    layerGroups.arba.clearLayers();
+    if (arbaFiltrada.length > 0) {
+        renderDataToLayer('arba', arbaFiltrada);
+        if (!map.hasLayer(layerGroups.arba)) layerGroups.arba.addTo(map);
+        console.log(`✓ ${arbaFiltrada.length} polígonos ARBA cargados`);
     } else {
-        console.log('⚠️ No se encontraron parcelas para esta localidad');
+        console.log('⚠️ No se encontraron polígonos ARBA para esta localidad');
     }
 
     // Cargar suministros filtrando por num_fimm desde el cache
     console.log(`Filtrando suministros por Localidad = ${numFimm}`);
-    const suministrosFiltrados = suministrosData.filter(s => s.Localidad === numFimm);
+    // Buscar el id de la localidad para comparar con localidad_id de la vista
+    // Filtrar por nombre de localidad (campo disponible en v_suministros_activos)
+    const suministrosFiltrados = suministrosData.filter(s => s.localidad === localidadNombre);
     console.log(`📊 Suministros encontrados en filtro: ${suministrosFiltrados.length}`);
 
     if (suministrosFiltrados.length > 0) {
         console.log('📊 Muestra de suministros filtrados (primeros 3):', suministrosFiltrados.slice(0, 3).map(s => ({
-            medidor: s.medidor, ruta: s.ruta, orden: s.orden, Localidad: s.Localidad
+            medidor: s.numero_medidor, ruta: s.ruta, orden: s.orden, localidad: s.localidad
         })));
 
         renderDataToLayer('suministros', suministrosFiltrados);
@@ -876,10 +968,11 @@ async function aplicarFiltroLocalidad(localidadNombre) {
 
     setTimeout(() => fitViewToLayerGroup('localidades'), 500);
 
-    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros, ${parcelasFiltradas.length} parcelas`;
+    const summary = `${localidadNombre}: ${callesFiltradas.length} calles, ${redGasFiltrada.length} red gas, ${suministrosFiltrados.length} suministros, ${arbaFiltrada.length} ARBA`;
     showStatus(summary, 'success');
     actualizarIndicadoresSiAbierto();
     if (callesFiltradas.length > 0) mostrarBuscadorCalles();
+    if (arbaFiltrada.length > 0) mostrarBuscadorArba(arbaFiltrada);
 
     const downloadBtn = document.getElementById('downloadReportBtn');
     if (downloadBtn) downloadBtn.disabled = false;
@@ -964,18 +1057,19 @@ async function applyUnidadRegionalFilter() {
         console.log(`✓ ${redGasUR.length} red de gas cargada (apagada)`);
     }
 
-    // Cargar Parcelas (apagadas por defecto)
-    const parcelasUR = await loadFilteredPostGIS('parcelas', 'localidad', unidadRegional);
-    layerGroups.parcelas.clearLayers();
-    if (parcelasUR.length > 0) {
-        renderDataToLayer('parcelas', parcelasUR);
-        if (map.hasLayer(layerGroups.parcelas)) map.removeLayer(layerGroups.parcelas);
-        console.log(`✓ ${parcelasUR.length} parcelas cargadas (apagadas)`);
+    // Cargar ARBA (selección espacial, apagada por defecto)
+    const arbaUR = await loadFilteredPostGIS('arba', 'localidad', unidadRegional);
+    layerGroups.arba.clearLayers();
+    if (arbaUR.length > 0) {
+        renderDataToLayer('arba', arbaUR);
+        if (map.hasLayer(layerGroups.arba)) map.removeLayer(layerGroups.arba);
+        console.log(`✓ ${arbaUR.length} polígonos ARBA cargados (apagados)`);
     }
 
     // Cargar suministros filtrados por las localidades
     const numFimms = localidadesFiltradas.map(l => l.num_fimm).filter(n => n != null);
-    const suministrosUR = suministrosData.filter(s => numFimms.includes(s.Localidad));
+    const nombresUR = localidadesFiltradas.map(l => l.nombre).filter(Boolean);
+    const suministrosUR = suministrosData.filter(s => nombresUR.includes(s.localidad));
     console.log(`📊 Suministros encontrados: ${suministrosUR.length}`);
 
     if (suministrosUR.length > 0) {
@@ -998,9 +1092,9 @@ async function applyUnidadRegionalFilter() {
 }
 
 function habilitarCapasDependientesApagadas(filterName) {
-    ['red_de_gas', 'calles', 'suministros', 'parcelas'].forEach(capa => {
+    ['red_de_gas', 'calles', 'suministros', 'arba'].forEach(capa => {
         const label = document.getElementById(`label-${capa}`);
-        const nombres = { red_de_gas: 'Red de Gas', calles: 'Calles', suministros: 'Suministros', parcelas: 'Parcelas' };
+        const nombres = { red_de_gas: 'Red de Gas', calles: 'Calles', suministros: 'Suministros', arba: 'Parcelas' };
         if (label) {
             label.innerHTML = `<input type="checkbox" id="layer-${capa}" data-table="${capa}"> ${nombres[capa]} (${filterName})`;
             const cb = document.getElementById(`layer-${capa}`);
@@ -1124,8 +1218,20 @@ async function applyProductoTurnoFilter() {
     layerGroups.red_de_gas.clearLayers();
 
     // Cargar suministros filtrados
-    const numFimms = currentFilter.num_fimm;
-    const suministrosFiltro = suministrosData.filter(s => numFimms.includes(s.Localidad));
+    let nombresFilter = [];
+    if (currentFilter.type === 'localidad') {
+        nombresFilter = [currentFilter.name];
+    } else if (currentFilter.type === 'unidad_regional') {
+        nombresFilter = localidadesData
+            .filter(l => l.unidad_regional === currentFilter.name)
+            .map(l => l.nombre).filter(Boolean);
+    } else {
+        const numFimmsFilter = (currentFilter.num_fimm || []).map(String);
+        nombresFilter = localidadesData
+            .filter(l => numFimmsFilter.includes(String(l.num_fimm)))
+            .map(l => l.nombre).filter(Boolean);
+    }
+    const suministrosFiltro = suministrosData.filter(s => nombresFilter.includes(s.localidad));
 
     if (suministrosFiltro.length > 0) {
         renderDataToLayer('suministros', suministrosFiltro);
@@ -1186,30 +1292,30 @@ function clearFilter() {
         suministrosLabel.innerHTML = `<input type="checkbox" id="layer-suministros" data-table="suministros" disabled> Suministros (requiere filtro)`;
     }
 
-    const parcelasLabel = document.getElementById('label-parcelas');
-    if (parcelasLabel) {
-        parcelasLabel.innerHTML = `<input type="checkbox" id="layer-parcelas" data-table="parcelas" disabled> Parcelas (requiere filtro)`;
+    const arbaLabel = document.getElementById('label-arba');
+    if (arbaLabel) {
+        arbaLabel.innerHTML = `<input type="checkbox" id="layer-arba" data-table="arba" disabled> Parcelas (requiere filtro)`;
     }
 
     const redGasCheckbox = document.getElementById('layer-red_de_gas');
     const callesCheckbox = document.getElementById('layer-calles');
     const suministrosCheckbox = document.getElementById('layer-suministros');
-    const parcelasCheckbox = document.getElementById('layer-parcelas');
+    const arbaCheckbox = document.getElementById('layer-arba');
 
     if (redGasCheckbox) { redGasCheckbox.checked = false; redGasCheckbox.disabled = true; }
     if (callesCheckbox) { callesCheckbox.checked = false; callesCheckbox.disabled = true; }
     if (suministrosCheckbox) { suministrosCheckbox.checked = false; suministrosCheckbox.disabled = true; }
-    if (parcelasCheckbox) { parcelasCheckbox.checked = false; parcelasCheckbox.disabled = true; }
+    if (arbaCheckbox) { arbaCheckbox.checked = false; arbaCheckbox.disabled = true; }
 
     if (layerGroups.red_de_gas && map.hasLayer(layerGroups.red_de_gas)) map.removeLayer(layerGroups.red_de_gas);
     if (layerGroups.calles && map.hasLayer(layerGroups.calles)) map.removeLayer(layerGroups.calles);
     if (layerGroups.suministros && map.hasLayer(layerGroups.suministros)) map.removeLayer(layerGroups.suministros);
-    if (layerGroups.parcelas && map.hasLayer(layerGroups.parcelas)) map.removeLayer(layerGroups.parcelas);
+    if (layerGroups.arba && map.hasLayer(layerGroups.arba)) map.removeLayer(layerGroups.arba);
 
     if (layerGroups.red_de_gas) layerGroups.red_de_gas.clearLayers();
     if (layerGroups.calles) layerGroups.calles.clearLayers();
     if (layerGroups.suministros) layerGroups.suministros.clearLayers();
-    if (layerGroups.parcelas) layerGroups.parcelas.clearLayers();
+    if (layerGroups.arba) layerGroups.arba.clearLayers();
     callesFiltradas = [];
     ocultarBuscadorCalles();
     ocultarBuscadorArba();
@@ -1276,15 +1382,18 @@ async function updateEstado(safeKey, medidor) {
     msgDiv.style.color = '#856404';
 
     try {
+        // Buscamos el suministro_id en el cache usando numero_medidor
+        const item = suministrosData.find(s => String(s.numero_medidor) === String(medidor));
+        if (!item) throw new Error('Suministro no encontrado en cache');
+
         const { error } = await supabaseClient
             .from('suministros')
             .update({ estado: nuevoEstado })
-            .eq('medidor', parseInt(medidor, 10));
+            .eq('id', item.suministro_id);
 
         if (error) throw error;
 
-        const item = suministrosData.find(s => String(s.medidor) === String(medidor));
-        if (item) item.estado = nuevoEstado;
+        item.estado_contrato = nuevoEstado;
 
         actualizarColorPuntoByMedidor(medidor);
         msgDiv.innerHTML = '✅ Guardado correctamente';
@@ -1547,15 +1656,31 @@ function buscarSuministro() {
     if (!texto) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Ingresá un texto para buscar.</div>'; return; }
     if (suministrosData.length === 0) { if (resultsDiv) resultsDiv.innerHTML = '<div class="search-no-results">Primero cargá los datos base.</div>'; return; }
 
-    const todoEncontrado = suministrosData.filter(s => { const valor = s[campo]; return valor && String(valor).toLowerCase().includes(texto); });
+    // Mapa de campos del buscador → nombres en la vista v_suministros_activos
+    const campoMap = { 'Nombre': 'cliente', 'medidor': 'numero_medidor', 'Cliente': 'cliente' };
+    const campoReal = campoMap[campo] || campo;
+    const todoEncontrado = suministrosData.filter(s => { const valor = s[campoReal]; return valor && String(valor).toLowerCase().includes(texto); });
     if (!resultsDiv) return;
     if (todoEncontrado.length === 0) { resultsDiv.innerHTML = '<div class="search-no-results">Sin resultados.</div>'; return; }
 
     let enFiltro = todoEncontrado, enOtra = [];
     if (currentFilter && currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
-        const numFimms = currentFilter.num_fimm.map(String);
-        enFiltro = todoEncontrado.filter(s => numFimms.includes(String(s.Localidad)));
-        enOtra = todoEncontrado.filter(s => !numFimms.includes(String(s.Localidad)));
+        // Convertir num_fimm a ids de localidades para comparar con localidad_id de la vista
+        let _nombresEnFiltro = [];
+        if (currentFilter.type === 'localidad') {
+            _nombresEnFiltro = [currentFilter.name];
+        } else if (currentFilter.type === 'unidad_regional') {
+            _nombresEnFiltro = localidadesData
+                .filter(l => l.unidad_regional === currentFilter.name)
+                .map(l => l.nombre).filter(Boolean);
+        } else {
+            const _nf = (currentFilter.num_fimm || []).map(String);
+            _nombresEnFiltro = localidadesData
+                .filter(l => _nf.includes(String(l.num_fimm)))
+                .map(l => l.nombre).filter(Boolean);
+        }
+        enFiltro = todoEncontrado.filter(s => _nombresEnFiltro.includes(s.localidad));
+        enOtra = todoEncontrado.filter(s => !_nombresEnFiltro.includes(s.localidad));
     }
 
     resultsDiv.innerHTML = '';
@@ -1568,8 +1693,8 @@ function buscarSuministro() {
     if (enOtra.length > 0) {
         resultsDiv.innerHTML += '<div style="font-size:11px; color:#856404; background:#fff3cd; padding:5px; margin-top:6px;">⚠️ ' + enOtra.length + ' resultado(s) en otra localidad:</div>';
         enOtra.slice(0, 5).forEach(item => {
-            const loc = localidadesData.find(l => String(l.num_fimm) === String(item.Localidad));
-            renderResultItem(item, resultsDiv, loc ? loc.nombre : `Localidad ${item.Localidad}`);
+            const loc = localidadesData.find(l => l.nombre === item.localidad);
+            renderResultItem(item, resultsDiv, loc ? loc.nombre : (item.localidad || 'Otra localidad'));
         });
     }
     if (!currentFilter || !currentFilter.num_fimm || currentFilter.num_fimm.length === 0) {
@@ -1585,10 +1710,10 @@ function renderResultItem(item, container, otraLocalidad = null) {
 
     const div = document.createElement('div');
     div.className = 'search-result-item';
-    div.innerHTML = `<div class="result-main">${item.Nombre || item.medidor || '-'}</div>
-        <div class="result-sub">🔢 Medidor: ${item.medidor || '-'} | Cliente: ${item.Cliente || '-'} | Estado: ${item.estado || '-'}</div>
+    div.innerHTML = `<div class="result-main">${item.cliente || item.numero_medidor || '-'}</div>
+        <div class="result-sub">🔢 Medidor: ${item.numero_medidor || '-'} | Estado: ${item.estado_contrato || '-'}</div>
         <div class="result-sub">📭 Ruta: <span style="color:${colorRuta}; font-weight:bold;">${ruta}</span> | 🔜 Orden: ${orden}</div>
-        <div class="result-sub">📍 ${item.Direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>`;
+        <div class="result-sub">📍 ${item.direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>`;
     div.addEventListener('click', () => zoomASuministro(item));
     container.appendChild(div);
 }
@@ -1618,7 +1743,7 @@ function zoomASuministro(item) {
     // Cancelar cualquier resaltado previo antes de aplicar el nuevo
     _cancelarResaltadoSuministro();
 
-    const medidorBuscado = item.medidor != null ? String(item.medidor) : null;
+    const medidorBuscado = item.numero_medidor != null ? String(item.numero_medidor) : null;
 
     let encontrado = false;
     layerGroups.suministros.eachLayer(function (geoJsonLayer) {
@@ -1630,7 +1755,7 @@ function zoomASuministro(item) {
             // Coincidencia preferida: medidor (único, robusto ante diferencias de precisión)
             // Fallback: distancia de coordenadas < 5 m
             const props = circleLayer.feature && circleLayer.feature.properties;
-            const coincideMedidor = medidorBuscado && props && String(props.medidor) === medidorBuscado;
+            const coincideMedidor = medidorBuscado && props && String(props.numero_medidor) === medidorBuscado;
             const coincideCoords = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
             if (!coincideMedidor && !coincideCoords) return;
 
@@ -1694,22 +1819,36 @@ function renderIndicadores() {
     let localidadesActivas = localidadesData;
     let contextoLabel = 'Todos los datos';
 
-    if (currentFilter && currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
-        suministrosActivos = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
-        localidadesActivas = localidadesData.filter(l => currentFilter.num_fimm.includes(l.num_fimm));
+    if (currentFilter) {
+        if (currentFilter.type === 'localidad') {
+            // Filtro por área de servicio individual
+            localidadesActivas = localidadesData.filter(l => l.nombre === currentFilter.name);
+            suministrosActivos = suministrosData.filter(s => s.localidad === currentFilter.name);
+        } else if (currentFilter.type === 'unidad_regional') {
+            // Filtro por unidad regional — varias localidades
+            localidadesActivas = localidadesData.filter(l => l.unidad_regional === currentFilter.name);
+            const nombresUR = localidadesActivas.map(l => l.nombre).filter(Boolean);
+            suministrosActivos = suministrosData.filter(s => nombresUR.includes(s.localidad));
+        } else if (currentFilter.num_fimm && currentFilter.num_fimm.length > 0) {
+            // Fallback genérico
+            const numFimmsStr = currentFilter.num_fimm.map(String);
+            localidadesActivas = localidadesData.filter(l => numFimmsStr.includes(String(l.num_fimm)));
+            const nombresLocalidad = localidadesActivas.map(l => l.nombre).filter(Boolean);
+            suministrosActivos = suministrosData.filter(s => nombresLocalidad.includes(s.localidad));
+        }
         contextoLabel = currentFilter.name;
     }
 
-    if (suministrosActivos.length === 0 && localidadesActivas.length === 0) {
+    if (suministrosData.length === 0 && localidadesData.length === 0) {
         content.innerHTML = '<p class="indicadores-hint">Cargue los datos base para ver los indicadores.</p>';
         return;
     }
 
     // --- KPIs globales ---
     const totalSuministros = suministrosActivos.length;
-    const conectados = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'conectado').length;
-    const cortados = suministrosActivos.filter(s => (s.estado || '').toLowerCase() === 'cortado').length;
-    const anomalias = suministrosActivos.filter(s => ['anomalia', 'anomalía'].includes((s.estado || '').toLowerCase())).length;
+    const conectados = suministrosActivos.filter(s => (s.estado_contrato || '').toLowerCase() === 'activo').length;
+    const cortados = suministrosActivos.filter(s => (s.estado_contrato || '').toLowerCase() === 'suspendido').length;
+    const anomalias = suministrosActivos.filter(s => (s.estado_contrato || '').toLowerCase() === 'baja').length;
     const sinEstado = totalSuministros - conectados - cortados - anomalias;
     const conRuta = suministrosActivos.filter(s => s.ruta && s.ruta !== '' && s.orden && s.orden !== 0).length;
     const sinRuta = totalSuministros - conRuta;
@@ -1718,8 +1857,7 @@ function renderIndicadores() {
     // --- Suministros por área (top 8) ---
     const porArea = {};
     suministrosActivos.forEach(s => {
-        const loc = localidadesData.find(l => String(l.num_fimm) === String(s.Localidad));
-        const nombre = loc ? (loc.nombre || `Loc. ${s.Localidad}`) : `Loc. ${s.Localidad || '?'}`;
+        const nombre = s.localidad || '?';
         porArea[nombre] = (porArea[nombre] || 0) + 1;
     });
     const topAreas = Object.entries(porArea).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -1734,9 +1872,9 @@ function renderIndicadores() {
     // Cards KPI
     html += `<div class="kpi-cards">
         <div class="kpi-card azul"><div class="kpi-value">${totalSuministros.toLocaleString()}</div><div class="kpi-label">Total suministros</div></div>
-        <div class="kpi-card verde"><div class="kpi-value">${conectados.toLocaleString()}</div><div class="kpi-label">Conectados</div></div>
-        <div class="kpi-card rojo"><div class="kpi-value">${cortados.toLocaleString()}</div><div class="kpi-label">Cortados</div></div>
-        <div class="kpi-card naranja"><div class="kpi-value">${anomalias.toLocaleString()}</div><div class="kpi-label">Anomalías</div></div>
+        <div class="kpi-card verde"><div class="kpi-value">${conectados.toLocaleString()}</div><div class="kpi-label">Activos</div></div>
+        <div class="kpi-card rojo"><div class="kpi-value">${cortados.toLocaleString()}</div><div class="kpi-label">Suspendidos</div></div>
+        <div class="kpi-card naranja"><div class="kpi-value">${anomalias.toLocaleString()}</div><div class="kpi-label">Baja</div></div>
         <div class="kpi-card"><div class="kpi-value">${totalAreas}</div><div class="kpi-label">Áreas de servicio</div></div>
         <div class="kpi-card"><div class="kpi-value">${rutasUnicas.size}</div><div class="kpi-label">Rutas activas</div></div>
         <div class="kpi-card verde"><div class="kpi-value">${conRuta.toLocaleString()}</div><div class="kpi-label">Con ruta asignada</div></div>
@@ -1746,9 +1884,9 @@ function renderIndicadores() {
     // Donut de estados (SVG puro)
     if (totalSuministros > 0) {
         const estadosData = [
-            { label: 'Conectado', valor: conectados, color: '#28a745' },
-            { label: 'Cortado', valor: cortados, color: '#dc3545' },
-            { label: 'Anomalía', valor: anomalias, color: '#fd7e14' },
+            { label: 'Activo', valor: conectados, color: '#28a745' },
+            { label: 'Suspendido', valor: cortados, color: '#dc3545' },
+            { label: 'Baja', valor: anomalias, color: '#fd7e14' },
             { label: 'Sin dato', valor: sinEstado, color: '#adb5bd' }
         ].filter(d => d.valor > 0);
 
@@ -1838,7 +1976,7 @@ function inicializarModuloRuteo(suministros, localidadNombre) {
 
     // Inicializar mapa de borrador
     suministros.forEach(s => {
-        suministrosBorradorMap[s.medidor] = { ruta: s.ruta ?? null, orden: s.orden ?? null };
+        suministrosBorradorMap[s.numero_medidor] = { ruta: s.ruta ?? null, orden: s.orden ?? null };
     });
 
     // Inicializar visibilidad de rutas (todas visibles por defecto)
@@ -2228,15 +2366,15 @@ async function confirmarBorrador() {
     for (const cambio of borrador) {
         try {
             const { error } = await supabaseClient
-                .from('suministros')
+                .from('medidores')
                 .update({ ruta: cambio.rutaNueva, orden: cambio.ordenNuevo })
-                .eq('medidor', cambio.medidor);
+                .eq('numero_medidor', cambio.medidor);
 
             if (error) {
                 console.error(`Error actualizando medidor ${cambio.medidor}:`, error);
                 errores++;
             } else {
-                const idx = suministrosData.findIndex(s => String(s.medidor) === String(cambio.medidor));
+                const idx = suministrosData.findIndex(s => String(s.numero_medidor) === String(cambio.medidor));
                 if (idx >= 0) {
                     suministrosData[idx].ruta = cambio.rutaNueva;
                     suministrosData[idx].orden = cambio.ordenNuevo;
@@ -2257,7 +2395,15 @@ async function confirmarBorrador() {
 
         // Re-renderizar suministros en el mapa
         if (layerGroups.suministros && currentFilter && currentFilter.num_fimm) {
-            const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+            const suministrosFiltrados = suministrosData.filter(s => {
+            if (!currentFilter) return true;
+            if (currentFilter.type === 'localidad') return s.localidad === currentFilter.name;
+            if (currentFilter.type === 'unidad_regional') {
+                const _nombres = localidadesData.filter(l => l.unidad_regional === currentFilter.name).map(l => l.nombre);
+                return _nombres.includes(s.localidad);
+            }
+            return true;
+        });
             renderDataToLayer('suministros', suministrosFiltrados);
             inicializarModuloRuteo(suministrosFiltrados, localidadFiltroActual);
         } else if (layerGroups.suministros) {
@@ -2287,7 +2433,15 @@ function descartarBorrador() {
 
     // Re-renderizar
     if (currentFilter && currentFilter.num_fimm) {
-        const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+        const suministrosFiltrados = suministrosData.filter(s => {
+            if (!currentFilter) return true;
+            if (currentFilter.type === 'localidad') return s.localidad === currentFilter.name;
+            if (currentFilter.type === 'unidad_regional') {
+                const _nombres = localidadesData.filter(l => l.unidad_regional === currentFilter.name).map(l => l.nombre);
+                return _nombres.includes(s.localidad);
+            }
+            return true;
+        });
         renderDataToLayer('suministros', suministrosFiltrados);
         inicializarModuloRuteo(suministrosFiltrados, localidadFiltroActual);
     }
@@ -2325,7 +2479,15 @@ function descargarReporteCSV() {
         return;
     }
 
-    const suministrosFiltrados = suministrosData.filter(s => currentFilter.num_fimm.includes(s.Localidad));
+    const suministrosFiltrados = suministrosData.filter(s => {
+            if (!currentFilter) return true;
+            if (currentFilter.type === 'localidad') return s.localidad === currentFilter.name;
+            if (currentFilter.type === 'unidad_regional') {
+                const _nombres = localidadesData.filter(l => l.unidad_regional === currentFilter.name).map(l => l.nombre);
+                return _nombres.includes(s.localidad);
+            }
+            return true;
+        });
 
     if (suministrosFiltrados.length === 0) {
         showStatus('No hay suministros para exportar en el área filtrada', 'warning');
@@ -2333,7 +2495,7 @@ function descargarReporteCSV() {
     }
 
     // Definimos las columnas principales primero
-    const keys = ['medidor', 'Nombre', 'Cliente', 'Direccion', 'estado', 'ruta', 'orden', 'Localidad'];
+    const keys = ['numero_medidor', 'cliente', 'direccion', 'estado_contrato', 'estado_medidor', 'ruta', 'orden', 'localidad'];
     const allKeys = Object.keys(suministrosFiltrados[0]).filter(k => k !== 'geom' && k !== 'wkt_geom' && k !== 'the_geom');
     const finalKeys = [...new Set([...keys, ...allKeys])];
 
@@ -2421,4 +2583,144 @@ function descargarCallesCSV() {
     URL.revokeObjectURL(url);
 
     showStatus('Reporte de calles descargado', 'success');
+}
+
+// ================================================================
+// CAPA ARBA — BÚSquEDA EN SIDEBAR
+// ================================================================
+
+// arbaDatosFiltrados: cache de la última consulta espacial para la búsqueda
+let arbaDatosFiltrados = [];
+
+function mostrarBuscadorArba(datos) {
+    arbaDatosFiltrados = datos || [];
+    const section = document.getElementById('buscarArbaSection');
+    if (!section) return;
+    section.style.display = 'block';
+
+    // Limpiar resultados previos
+    const resultsDiv = document.getElementById('arbaSearchResults');
+    if (resultsDiv) resultsDiv.innerHTML = '';
+    const input = document.getElementById('arbaSearchInput');
+    if (input) input.value = '';
+
+    // Poblar datalist con localidades únicas del resultado espacial
+    const datalist = document.getElementById('arbaSuggestions');
+    if (datalist) {
+        datalist.innerHTML = '';
+        const localidades = [...new Set(
+            arbaDatosFiltrados.map(d => String(d.partida_ || '')).filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b));
+        localidades.forEach(loc => {
+            const opt = document.createElement('option');
+            opt.value = loc;
+            datalist.appendChild(opt);
+        });
+    }
+
+    // Re-registrar listeners (por si se llamó antes)
+    const btn = document.getElementById('arbaSearchBtn');
+    const clearBtn = document.getElementById('arbaClearBtn');
+
+    // Clonar nodos para eliminar listeners anteriores
+    if (btn) {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', buscarArba);
+    }
+    if (input) {
+        const newInput = document.getElementById('arbaSearchInput');
+        newInput.addEventListener('keydown', e => { if (e.key === 'Enter') buscarArba(); });
+    }
+    if (clearBtn) {
+        const newClear = clearBtn.cloneNode(true);
+        clearBtn.parentNode.replaceChild(newClear, clearBtn);
+        newClear.addEventListener('click', () => {
+            const inp = document.getElementById('arbaSearchInput');
+            if (inp) inp.value = '';
+            const r = document.getElementById('arbaSearchResults');
+            if (r) r.innerHTML = '';
+            if (inp) inp.focus();
+        });
+    }
+}
+
+function ocultarBuscadorArba() {
+    const section = document.getElementById('buscarArbaSection');
+    if (section) section.style.display = 'none';
+    const resultsDiv = document.getElementById('arbaSearchResults');
+    if (resultsDiv) resultsDiv.innerHTML = '';
+    const input = document.getElementById('arbaSearchInput');
+    if (input) input.value = '';
+    arbaDatosFiltrados = [];
+}
+
+function buscarArba() {
+    const input = document.getElementById('arbaSearchInput');
+    const fieldSelect = document.getElementById('arbaSearchField');
+    const resultsDiv = document.getElementById('arbaSearchResults');
+    if (!input || !resultsDiv) return;
+
+    const query = input.value.trim().toLowerCase();
+    const field = fieldSelect ? fieldSelect.value : 'partida_';
+
+    if (!query) {
+        resultsDiv.innerHTML = '<p style="color:#888; font-size:12px;">Ingrese un término para buscar.</p>';
+        return;
+    }
+
+    if (arbaDatosFiltrados.length === 0) {
+        resultsDiv.innerHTML = '<p style="color:#888; font-size:12px;">Aplique un filtro de localidad primero.</p>';
+        return;
+    }
+
+    const resultados = arbaDatosFiltrados.filter(d => {
+        const val = String(d[field] || d[field.toUpperCase()] || '').toLowerCase();
+        return val.includes(query);
+    });
+
+    resultsDiv.innerHTML = '';
+    if (resultados.length === 0) {
+        resultsDiv.innerHTML = '<p style="color:#888; font-size:12px;">Sin resultados.</p>';
+        return;
+    }
+
+    const mostrar = resultados.slice(0, 50);
+    mostrar.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'search-result-item';
+        div.style.cssText = 'padding:6px 8px; border-bottom:1px solid #eee; cursor:pointer; font-size:12px;';
+        const partida_ = item.partida_ || '—';
+        const pda = item.pda || '—';
+        const localidad = item.localidad || '—';
+        div.innerHTML = `<strong>Partida: ${partida_}</strong><br><span style="color:#666;">${localidad}</span>`;
+
+        div.addEventListener('click', () => {
+            const geomField = item.wkt_geom || item.geom || item.the_geom;
+            if (geomField) {
+                const geojson = typeof geomField === 'string' ? wktToGeoJSON(geomField) : geomField;
+                if (geojson) {
+                    const layer = L.geoJSON(geojson);
+                    const bounds = layer.getBounds();
+                    if (bounds && bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
+                    }
+                }
+            }
+            if (layerGroups.arba && !map.hasLayer(layerGroups.arba)) {
+                layerGroups.arba.addTo(map);
+                const cb = document.getElementById('layer-arba');
+                if (cb) cb.checked = true;
+            }
+            showStatus(`Parcela: ${partida_} — ${localidad}`, 'success');
+        });
+        resultsDiv.appendChild(div);
+    });
+
+    if (resultados.length > 50) {
+        const more = document.createElement('p');
+        more.style.cssText = 'font-size:11px; color:#888; margin:4px 0;';
+        more.textContent = `...y ${resultados.length - 50} más. Refine la búsqueda.`;
+        resultsDiv.appendChild(more);
+    }
 }

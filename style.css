@@ -512,7 +512,8 @@ select {
 /* ============================== */
 
 #searchSidebarSection input[type="text"],
-#buscarCallesSection input[type="text"] {
+#buscarCallesSection input[type="text"],
+#buscarParcelasSection input[type="text"] {
     width: 100%;
     padding: 7px;
     margin: 4px 0;

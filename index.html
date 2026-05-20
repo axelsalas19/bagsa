@@ -125,8 +125,8 @@
         </div>
 
         <div class="layer-item">
-            <label id="label-parcelas">
-                <input type="checkbox" id="layer-parcelas" data-table="parcelas" disabled>
+            <label id="label-arba">
+                <input type="checkbox" id="layer-arba" data-table="arba" disabled>
                 Parcelas (requiere filtro)
             </label>
         </div>
@@ -146,6 +146,22 @@
                     style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
             </div>
             <div id="searchResults"></div>
+        </div>
+
+        <!-- Búsqueda ARBA -->
+        <div class="filter-section" id="buscarArbaSection" style="display:none;">
+            <h3>🏠 Buscar Parcela</h3>
+            <select id="arbaSearchField">
+                <option value="partida_">Partida</option>
+            </select>
+            <input type="text" id="arbaSearchInput" placeholder="Ingrese texto a buscar..." list="arbaSuggestions" autocomplete="off">
+            <datalist id="arbaSuggestions"></datalist>
+            <div style="display:flex; gap:6px;">
+                <button id="arbaSearchBtn" style="flex:1;">Buscar</button>
+                <button id="arbaClearBtn" class="filter-btn clear"
+                    style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+            </div>
+            <div id="arbaSearchResults"></div>
         </div>
 
         <!-- Descargar Reporte -->
