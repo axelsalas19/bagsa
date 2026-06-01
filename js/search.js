@@ -25,6 +25,21 @@ export function initSearchPanel() {
         if (input) input.focus();
     });
 
+    const searchRutaBtn = document.getElementById('searchRutaBtn');
+    const searchRutaClear = document.getElementById('searchRutaClearBtn');
+    const rutaInput = document.getElementById('searchRutaInput');
+    const ordenInput = document.getElementById('searchOrdenInput');
+    if (searchRutaBtn) searchRutaBtn.addEventListener('click', buscarPorRutaOrden);
+    if (searchRutaClear) searchRutaClear.addEventListener('click', () => {
+        if (rutaInput) rutaInput.value = '';
+        if (ordenInput) ordenInput.value = '';
+        const r = document.getElementById('searchResults');
+        if (r) r.innerHTML = '';
+        if (rutaInput) rutaInput.focus();
+    });
+    if (rutaInput) rutaInput.addEventListener('keydown', e => { if (e.key === 'Enter') buscarPorRutaOrden(); });
+    if (ordenInput) ordenInput.addEventListener('keydown', e => { if (e.key === 'Enter') buscarPorRutaOrden(); });
+
     const callesBtn = document.getElementById('callesSearchBtn');
     const callesInput = document.getElementById('callesSearchInput');
     const callesClear = document.getElementById('callesClearBtn');
@@ -263,6 +278,79 @@ function renderResultItem(item, container, otraLocalidad = null) {
         <div class="result-sub">📍 ${item.direccion || ''}${otraLocalidad ? ` <em style="color:#856404">— ${otraLocalidad}</em>` : ''}</div>`;
     div.addEventListener('click', () => zoomASuministro(item));
     container.appendChild(div);
+}
+
+/**
+ * Busca suministros por `ruta` y/o `orden` dentro de la caché (y prioriza los de la localidad filtrada)
+ */
+export function buscarPorRutaOrden() {
+    const rutaValRaw = document.getElementById('searchRutaInput')?.value;
+    const ordenValRaw = document.getElementById('searchOrdenInput')?.value;
+    const resultsDiv = document.getElementById('searchResults');
+    if (!resultsDiv) return;
+
+    const rutaVal = rutaValRaw != null && String(rutaValRaw).trim() !== '' ? String(rutaValRaw).trim() : null;
+    const ordenVal = ordenValRaw != null && String(ordenValRaw).trim() !== '' ? parseInt(ordenValRaw, 10) : null;
+
+    if (!rutaVal && (ordenVal == null || isNaN(ordenVal))) {
+        resultsDiv.innerHTML = '<div class="search-no-results">Ingrese ruta o/ y orden para buscar.</div>';
+        return;
+    }
+
+    if (state.suministrosData.length === 0) {
+        resultsDiv.innerHTML = '<div class="search-no-results">Primero cargá los datos base.</div>';
+        return;
+    }
+
+    const coincidencias = state.suministrosData.filter(s => {
+        const sRuta = s.ruta != null ? String(s.ruta) : null;
+        const sOrden = s.orden != null ? Number(s.orden) : null;
+        if (rutaVal && ordenVal != null && !isNaN(ordenVal)) {
+            return sRuta === rutaVal && sOrden === ordenVal;
+        } else if (rutaVal) {
+            return sRuta === rutaVal;
+        } else if (ordenVal != null && !isNaN(ordenVal)) {
+            return sOrden === ordenVal;
+        }
+        return false;
+    });
+
+    if (coincidencias.length === 0) {
+        resultsDiv.innerHTML = `<div class="search-no-results">Sin resultados para Ruta ${rutaVal || '-'} ${ordenVal != null ? 'Orden ' + ordenVal : ''}.</div>`;
+        return;
+    }
+
+    // Priorizar resultados dentro del filtro activo (localidad / unidad_regional)
+    let enFiltro = coincidencias, enOtra = [];
+    if (state.currentFilter && state.currentFilter.num_fimm && state.currentFilter.num_fimm.length > 0) {
+        let _nombresEnFiltro = [];
+        if (state.currentFilter.type === 'localidad') {
+            _nombresEnFiltro = [state.currentFilter.name];
+        } else if (state.currentFilter.type === 'unidad_regional') {
+            _nombresEnFiltro = state.localidadesData
+                .filter(l => l.unidad_regional === state.currentFilter.name)
+                .map(l => l.nombre).filter(Boolean);
+        } else {
+            const _nf = (state.currentFilter.num_fimm || []).map(String);
+            _nombresEnFiltro = state.localidadesData
+                .filter(l => _nf.includes(String(l.num_fimm)))
+                .map(l => l.nombre).filter(Boolean);
+        }
+        enFiltro = coincidencias.filter(s => _nombresEnFiltro.includes(s.localidad));
+        enOtra = coincidencias.filter(s => !_nombresEnFiltro.includes(s.localidad));
+    }
+
+    resultsDiv.innerHTML = '';
+    if (enFiltro.length > 0) {
+        enFiltro.slice(0, 50).forEach(item => renderResultItem(item, resultsDiv));
+    }
+    if (enOtra.length > 0) {
+        resultsDiv.innerHTML += `<div class="search-no-results">⚠️ ${enOtra.length} resultado(s) en otra localidad:</div>`;
+        enOtra.slice(0, 20).forEach(item => {
+            const loc = state.localidadesData.find(l => l.nombre === item.localidad);
+            renderResultItem(item, resultsDiv, loc ? loc.nombre : (item.localidad || 'Otra localidad'));
+        });
+    }
 }
 
 function _cancelarResaltadoSuministro() {
