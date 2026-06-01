@@ -20,7 +20,7 @@
 
     <div id="sidebar">
         <div class="sidebar-brand">
-            <img src="logotipo2.jpeg" alt="BAGSA logo" class="sidebar-logo">
+            <img src="logo.jpeg" alt="BAGSA logo" class="sidebar-logo">
             <h2>Geoportal BAGSA</h2>
         </div>
 
@@ -147,6 +147,16 @@
                 <button id="searchBtn" style="flex:1;">Buscar</button>
                 <button id="searchClearBtn" class="filter-btn clear"
                     style="flex:0 0 auto; width:auto; padding:6px 10px;" title="Limpiar">✕</button>
+            </div>
+            <hr style="margin:8px 0;">
+            <h4 style="margin:6px 0 4px; font-size:0.95em;">🔢 Buscar por Ruta / Orden</h4>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input type="number" id="searchRutaInput" placeholder="Ruta" style="flex:1;" min="0">
+                <input type="number" id="searchOrdenInput" placeholder="Orden" style="width:90px;" min="0">
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <button id="searchRutaBtn" style="flex:1;">Buscar Ruta</button>
+                <button id="searchRutaClearBtn" class="filter-btn clear" style="width:90px;">✕</button>
             </div>
             <div id="searchResults"></div>
         </div>
