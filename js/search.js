@@ -363,29 +363,56 @@ function _cancelarResaltadoSuministro() {
  * Centra la vista en el suministro y lo resalta de forma temporal
  */
 export function zoomASuministro(item) {
-    const geom = item.geom || item.wkt_geom || item.the_geom;
-    if (!geom) return;
-    let coords;
-    
-    if (typeof geom === 'object' && geom.coordinates) coords = geom.coordinates;
-    else if (typeof geom === 'string') { 
-        const gj = wktToGeoJSON(geom); 
-        if (gj && gj.coordinates) coords = gj.coordinates; 
+    // Helper: obtiene latlng desde varios formatos posibles
+    function _getLatLngFromItem(it) {
+        const geom = it.geom || it.wkt_geom || it.the_geom;
+        if (!geom) return null;
+        try {
+            if (typeof geom === 'object' && geom.coordinates) return L.latLng(geom.coordinates[1], geom.coordinates[0]);
+            if (typeof geom === 'object' && geom.type === 'Feature' && geom.geometry && geom.geometry.type === 'Point') return L.latLng(geom.geometry.coordinates[1], geom.geometry.coordinates[0]);
+            if (typeof geom === 'string') {
+                const gj = wktToGeoJSON(geom);
+                if (gj && gj.coordinates) return L.latLng(gj.coordinates[1], gj.coordinates[0]);
+                if (gj && gj.type === 'Feature' && gj.geometry && gj.geometry.type === 'Point') return L.latLng(gj.geometry.coordinates[1], gj.geometry.coordinates[0]);
+            }
+        } catch (e) { console.warn('Error parseando geometría para zoom:', e); }
+        return null;
     }
-    if (!coords) return;
 
-    const latlng = L.latLng(coords[1], coords[0]);
+    // Intento directo con la geometría del item
+    let latlng = _getLatLngFromItem(item);
+
+    // Si no hay geometría, buscar en la caché por numero_medidor
+    if (!latlng && item.numero_medidor) {
+        const encontrado = state.suministrosData.find(s => String(s.numero_medidor) === String(item.numero_medidor));
+        if (encontrado) latlng = _getLatLngFromItem(encontrado);
+    }
+
+    // Si todavía no hay latlng pero hay ruta, hago fitBounds sobre todos los suministros de esa ruta
+    if (!latlng && item.ruta) {
+        const agrup = state.suministrosData.filter(s => s.ruta != null && String(s.ruta) === String(item.ruta));
+        const latlngs = agrup.map(s => _getLatLngFromItem(s)).filter(Boolean);
+        if (latlngs.length > 0) {
+            const group = L.featureGroup(latlngs.map(ll => L.marker(ll)));
+            state.map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 17 });
+            // no resaltado individual en este caso
+            return;
+        }
+    }
+
+    if (!latlng) return;
+
     state.map.setView(latlng, 18);
 
     _cancelarResaltadoSuministro();
 
     const medidorBuscado = item.numero_medidor != null ? String(item.numero_medidor) : null;
-    let encontrado = false;
+    let encontradoFlag = false;
 
     state.layerGroups.suministros.eachLayer(function (geoJsonLayer) {
-        if (encontrado) return;
+        if (encontradoFlag) return;
         geoJsonLayer.eachLayer(function (circleLayer) {
-            if (encontrado) return;
+            if (encontradoFlag) return;
             if (!circleLayer.getLatLng) return;
 
             const props = circleLayer.feature && circleLayer.feature.properties;
@@ -393,7 +420,7 @@ export function zoomASuministro(item) {
             const coincideCoords = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
             if (!coincideMedidor && !coincideCoords) return;
 
-            encontrado = true;
+            encontradoFlag = true;
             setTimeout(() => {
                 const colorOriginal = circleLayer.options.fillColor;
                 const borderOriginal = circleLayer.options.color;
@@ -401,7 +428,6 @@ export function zoomASuministro(item) {
                 const opacOriginal = circleLayer.options.fillOpacity;
                 const radioOriginal = circleLayer.options.radius;
 
-                // Estilo destacado: blanco grande con borde azul
                 circleLayer.setStyle({ fillColor: '#ffffff', color: '#1565C0', weight: 3.5, fillOpacity: 0.95 });
                 circleLayer.setRadius(14);
                 circleLayer.openPopup();
