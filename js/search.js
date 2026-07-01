@@ -407,6 +407,7 @@ export function zoomASuministro(item) {
     _cancelarResaltadoSuministro();
 
     const medidorBuscado = item.numero_medidor != null ? String(item.numero_medidor) : null;
+    const clienteBuscado = item.numero_cliente != null ? String(item.numero_cliente) : null;
     let encontradoFlag = false;
 
     state.layerGroups.suministros.eachLayer(function (geoJsonLayer) {
@@ -416,9 +417,16 @@ export function zoomASuministro(item) {
             if (!circleLayer.getLatLng) return;
 
             const props = circleLayer.feature && circleLayer.feature.properties;
-            const coincideMedidor = medidorBuscado && props && String(props.numero_medidor) === medidorBuscado;
-            const coincideCoords = !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
-            if (!coincideMedidor && !coincideCoords) return;
+            if (!props) return;
+
+            // Único criterio válido cuando existe numero_cliente: NO hay fallback a coords.
+            const coincideCliente = clienteBuscado && String(props.numero_cliente) === clienteBuscado;
+
+            // Fallback solo si el item buscado no trae numero_cliente
+            const coincideMedidor = !clienteBuscado && medidorBuscado && String(props.numero_medidor) === medidorBuscado;
+            const coincideCoords = !clienteBuscado && !coincideMedidor && circleLayer.getLatLng().distanceTo(latlng) < 5;
+
+            if (!coincideCliente && !coincideMedidor && !coincideCoords) return;
 
             encontradoFlag = true;
             setTimeout(() => {
@@ -430,6 +438,7 @@ export function zoomASuministro(item) {
 
                 circleLayer.setStyle({ fillColor: '#ffffff', color: '#1565C0', weight: 3.5, fillOpacity: 0.95 });
                 circleLayer.setRadius(14);
+                circleLayer.bringToFront();
                 circleLayer.openPopup();
 
                 _highlightRestore = () => {
