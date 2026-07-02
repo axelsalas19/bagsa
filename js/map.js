@@ -134,6 +134,51 @@ export function initLayerGroups() {
 }
 
 /**
+ * Agrupa suministros con coordenadas casi idénticas (mismo lote/edificio) y les aplica
+ * un offset radial para que sean visualmente distinguibles y clickeables individualmente.
+ */
+function aplicarOffsetClusters(data, toleranciaMetros = 2.5, radioSeparacionMetros = 3.5) {
+    const metrosPorGradoLat = 111320;
+    const latMedia = -36; // aprox. Buenos Aires, para escalar la longitud correctamente
+    const metrosPorGradoLng = metrosPorGradoLat * Math.cos(latMedia * Math.PI / 180);
+
+    const conCoords = data.map(item => {
+        const itemGeometry = item.wkt_geom || item.geom || item.the_geom;
+        let lat = null, lng = null;
+        if (itemGeometry) {
+            const gj = typeof itemGeometry === 'string' ? wktToGeoJSON(itemGeometry) : itemGeometry;
+            const coords = gj?.coordinates || gj?.geometry?.coordinates;
+            if (coords) { lng = coords[0]; lat = coords[1]; }
+        }
+        return { item, lat, lng };
+    });
+
+    const grupos = new Map();
+    conCoords.forEach(entry => {
+        if (entry.lat == null || entry.lng == null) return;
+        const claveLat = Math.round(entry.lat / (toleranciaMetros / metrosPorGradoLat));
+        const claveLng = Math.round(entry.lng / (toleranciaMetros / metrosPorGradoLng));
+        const clave = `${claveLat}_${claveLng}`;
+        if (!grupos.has(clave)) grupos.set(clave, []);
+        grupos.get(clave).push(entry);
+    });
+
+    grupos.forEach(grupo => {
+        if (grupo.length <= 1) return;
+        const n = grupo.length;
+        grupo.forEach((entry, i) => {
+            const angulo = (2 * Math.PI * i) / n;
+            entry.item._geomOffset = {
+                lat: entry.lat + (radioSeparacionMetros * Math.cos(angulo)) / metrosPorGradoLat,
+                lng: entry.lng + (radioSeparacionMetros * Math.sin(angulo)) / metrosPorGradoLng
+            };
+            entry.item._clusterSize = n;
+        });
+    });
+
+    return conCoords.map(e => e.item);
+}
+/**
  * Renderizado genérico de datos vectoriales en capas GeoJSON de Leaflet
  */
 export function renderDataToLayer(tableName, data, style = null) {
@@ -143,7 +188,10 @@ export function renderDataToLayer(tableName, data, style = null) {
 
     let featuresAdded = 0;
 
-    data.forEach(item => {
+    let dataFinal = data;
+    if (tableName === 'suministros') dataFinal = aplicarOffsetClusters(data);
+
+    dataFinal.forEach(item => {
         let geojson = null;
         const itemGeometry = item.wkt_geom || item.geom || item.the_geom;
 
@@ -178,6 +226,7 @@ export function renderDataToLayer(tableName, data, style = null) {
 
                 if (tableName === 'suministros') {
                     layerOptions.pointToLayer = (feature, latlng) => {
+                        const coordFinal = item._geomOffset ? L.latLng(item._geomOffset.lat, item._geomOffset.lng) : latlng;
                         const ruta = item.ruta;
                         const orden = item.orden;
                         const tieneRuta = ruta && ruta !== null && ruta !== '';
@@ -185,7 +234,7 @@ export function renderDataToLayer(tableName, data, style = null) {
                         let color = (tieneRuta && tieneOrden) ? obtenerColorRuta(String(ruta)) : '#3d4f5e';
                         const borderColor = (tieneRuta && tieneOrden) ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)';
                         
-                        return L.circleMarker(latlng, {
+                        return L.circleMarker(coordFinal, {
                             radius: 4,
                             fillColor: color,
                             color: borderColor,
