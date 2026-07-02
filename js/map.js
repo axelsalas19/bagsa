@@ -495,3 +495,36 @@ export function actualizarColorPuntoByMedidor(medidor) {
         });
     });
 }
+/**
+ * Navega entre los suministros que comparten ubicación (cluster), abriendo
+ * el popup del vecino siguiente/anterior sin necesidad de hacer clic sobre él.
+ */
+export function navegarClusterSuministro(medidorActual, direccion) {
+    const actual = state.suministrosData.find(s => String(s.numero_medidor) === String(medidorActual));
+    if (!actual || !actual._clusterMedidores || actual._clusterMedidores.length <= 1) return;
+
+    const n = actual._clusterMedidores.length;
+    const nuevoIndex = ((actual._clusterIndex + direccion) % n + n) % n;
+    const destino = actual._clusterMedidores[nuevoIndex];
+    if (!destino) return;
+
+    let layerDestino = null;
+    state.layerGroups.suministros.eachLayer(function (geoJsonLayer) {
+        if (layerDestino) return;
+        geoJsonLayer.eachLayer(function (circleLayer) {
+            if (layerDestino) return;
+            const props = circleLayer.feature && circleLayer.feature.properties;
+            if (props && String(props.numero_medidor) === String(destino.numero_medidor)) {
+                layerDestino = circleLayer;
+            }
+        });
+    });
+
+    if (layerDestino) {
+        layerDestino.bringToFront();
+        layerDestino.openPopup();
+    }
+}
+
+// Exponer en window para el onclick del popup HTML
+window.navegarClusterSuministro = navegarClusterSuministro;
