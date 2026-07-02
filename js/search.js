@@ -365,6 +365,7 @@ function _cancelarResaltadoSuministro() {
 export function zoomASuministro(item) {
     // Helper: obtiene latlng desde varios formatos posibles
     function _getLatLngFromItem(it) {
+        if (it._geomOffset) return L.latLng(it._geomOffset.lat, it._geomOffset.lng);
         const geom = it.geom || it.wkt_geom || it.the_geom;
         if (!geom) return null;
         try {
