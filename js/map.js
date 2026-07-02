@@ -134,12 +134,11 @@ export function initLayerGroups() {
 }
 
 /**
- * Agrupa suministros con coordenadas casi idénticas (mismo lote/edificio) y les aplica
- * un offset radial para que sean visualmente distinguibles y clickeables individualmente.
+ * Agrupa suministros con coordenadas casi idénticas (mismo lote/edificio)
  */
-function aplicarOffsetClusters(data, toleranciaMetros = 2.5, radioSeparacionMetros = 3.5) {
+function detectarClusters(data, toleranciaMetros = 2.5) {
     const metrosPorGradoLat = 111320;
-    const latMedia = -36; // aprox. Buenos Aires, para escalar la longitud correctamente
+    const latMedia = -36;
     const metrosPorGradoLng = metrosPorGradoLat * Math.cos(latMedia * Math.PI / 180);
 
     const conCoords = data.map(item => {
@@ -165,18 +164,24 @@ function aplicarOffsetClusters(data, toleranciaMetros = 2.5, radioSeparacionMetr
 
     grupos.forEach(grupo => {
         if (grupo.length <= 1) return;
-        const n = grupo.length;
-        grupo.forEach((entry, i) => {
-            const angulo = (2 * Math.PI * i) / n;
-            entry.item._geomOffset = {
-                lat: entry.lat + (radioSeparacionMetros * Math.cos(angulo)) / metrosPorGradoLat,
-                lng: entry.lng + (radioSeparacionMetros * Math.sin(angulo)) / metrosPorGradoLng
-            };
-            entry.item._clusterSize = n;
+        const ordenados = grupo
+            .map(e => e.item)
+            .sort((a, b) => String(a.numero_cliente || '').localeCompare(String(b.numero_cliente || ''), undefined, { numeric: true }));
+
+        const resumen = ordenados.map(it => ({
+            numero_medidor: it.numero_medidor,
+            numero_cliente: it.numero_cliente,
+            cliente: it.cliente
+        }));
+
+        ordenados.forEach((it, idx) => {
+            it._clusterMedidores = resumen;
+            it._clusterIndex = idx;
+            it._clusterSize = resumen.length;
         });
     });
 
-    return conCoords.map(e => e.item);
+    return data;
 }
 /**
  * Renderizado genérico de datos vectoriales en capas GeoJSON de Leaflet
@@ -189,7 +194,7 @@ export function renderDataToLayer(tableName, data, style = null) {
     let featuresAdded = 0;
 
     let dataFinal = data;
-    if (tableName === 'suministros') dataFinal = aplicarOffsetClusters(data);
+    if (tableName === 'suministros') dataFinal = detectarClusters(data);
 
     dataFinal.forEach(item => {
         let geojson = null;
@@ -226,7 +231,6 @@ export function renderDataToLayer(tableName, data, style = null) {
 
                 if (tableName === 'suministros') {
                     layerOptions.pointToLayer = (feature, latlng) => {
-                        const coordFinal = item._geomOffset ? L.latLng(item._geomOffset.lat, item._geomOffset.lng) : latlng;
                         const ruta = item.ruta;
                         const orden = item.orden;
                         const tieneRuta = ruta && ruta !== null && ruta !== '';
@@ -234,7 +238,7 @@ export function renderDataToLayer(tableName, data, style = null) {
                         let color = (tieneRuta && tieneOrden) ? obtenerColorRuta(String(ruta)) : '#3d4f5e';
                         const borderColor = (tieneRuta && tieneOrden) ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)';
                         
-                        return L.circleMarker(coordFinal, {
+                        return L.circleMarker(latlng, {
                             radius: 4,
                             fillColor: color,
                             color: borderColor,
