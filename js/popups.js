@@ -31,8 +31,14 @@ export function createSuministroPopup(properties) {
 
     let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
     if (properties._clusterSize > 1) {
+        const idx = (properties._clusterIndex ?? 0) + 1;
         content += `<div style="background:#3a2f1a; border-left:3px solid #ff9800; padding:5px 8px; margin-bottom:6px; font-size:11px; color:#ffcc80;">
             ⚠️ Hay <strong>${properties._clusterSize}</strong> suministros en esta misma dirección/lote.
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px;">
+                <button onclick="navegarClusterSuministro('${medidor}', -1)" style="background:#4a3a1f; border:1px solid #ff9800; color:#ffcc80; border-radius:3px; padding:2px 8px; cursor:pointer; font-size:11px;">◀ Anterior</button>
+                <span style="font-weight:bold;">${idx} / ${properties._clusterSize}</span>
+                <button onclick="navegarClusterSuministro('${medidor}', 1)" style="background:#4a3a1f; border:1px solid #ff9800; color:#ffcc80; border-radius:3px; padding:2px 8px; cursor:pointer; font-size:11px;">Siguiente ▶</button>
+            </div>
         </div>`;
     }
     if (properties.numero_medidor) content += `<strong>Medidor:</strong> ${properties.numero_medidor}${getCopyBtn(properties.numero_medidor, 'Medidor')}${ properties.numero_cliente ? ` &nbsp;|&nbsp; <strong>Cliente N°:</strong> ${properties.numero_cliente}${getCopyBtn(properties.numero_cliente, 'Num. Cliente')}` : ''}<br>`;
