@@ -30,6 +30,11 @@ export function createSuministroPopup(properties) {
     const tieneOrden = orden && orden !== null && orden !== 0;
 
     let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
+    if (properties._clusterSize > 1) {
+        content += `<div style="background:#3a2f1a; border-left:3px solid #ff9800; padding:5px 8px; margin-bottom:6px; font-size:11px; color:#ffcc80;">
+            ⚠️ Hay <strong>${properties._clusterSize}</strong> suministros en esta misma dirección/lote.
+        </div>`;
+    }
     if (properties.numero_medidor) content += `<strong>Medidor:</strong> ${properties.numero_medidor}${getCopyBtn(properties.numero_medidor, 'Medidor')}${ properties.numero_cliente ? ` &nbsp;|&nbsp; <strong>Cliente N°:</strong> ${properties.numero_cliente}${getCopyBtn(properties.numero_cliente, 'Num. Cliente')}` : ''}<br>`;
     if (properties.cliente) content += `<strong>Cliente:</strong> ${properties.cliente}${getCopyBtn(properties.cliente, 'Cliente')}<br>`;
     if (properties.categoria) content += `<strong>Categoría:</strong> ${properties.categoria}<br>`;
