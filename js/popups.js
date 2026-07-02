@@ -29,7 +29,7 @@ export function createSuministroPopup(properties) {
     const tieneRuta = ruta && ruta !== null && ruta !== '';
     const tieneOrden = orden && orden !== null && orden !== 0;
 
-    let content = `<strong>📋 Suministro</strong><br><hr style="margin:5px 0;">`;
+    let content = `<strong>Suministro</strong><br><hr style="margin:5px 0;">`;
     if (properties._clusterSize > 1) {
         const idx = (properties._clusterIndex ?? 0) + 1;
         content += `<div style="background:#3a2f1a; border-left:3px solid #ff9800; padding:5px 8px; margin-bottom:6px; font-size:11px; color:#ffcc80;">
